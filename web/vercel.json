@@ -1,0 +1,8 @@
+{
+  "functions": {
+    "api/generate.js": {
+      "includeFiles": "model/**",
+      "maxDuration": 30
+    }
+  }
+}

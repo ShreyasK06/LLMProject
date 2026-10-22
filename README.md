@@ -27,6 +27,19 @@ python generate.py                # samples from several prompts
 python generate.py "HAMLET:"      # or your own prompts
 ```
 
+## Chat web app (`web/`)
+A React (Vite) chat UI with a Vercel serverless backend. Vercel's Python runtime can't hold PyTorch, so the backend runs the model in plain JavaScript (`web/lib/gpt.js`: KV-cached decoding, no dependencies) from exported weights. The model is a base LM, not an assistant: each message is the start of a passage and the model continues it, streamed character by character. Settings: temperature, top-k, reply length, seed, and an option to carry the conversation as context.
+
+1. Export the trained checkpoint (writes `web/model/weights.bin` ~13 MB and `web/model/model.json`), then commit both:
+   ```
+   python export_weights.py --ckpt exp_c_small_best.pt
+   ```
+2. Run locally: `cd web && npm install && npm run dev` (serves the UI and `/api/generate` on one port; no Vercel login needed).
+3. Deploy: import the repo in Vercel and set **Root Directory** to `web`. `web/vercel.json` bundles `model/**` into the function.
+4. Tests: `cd web && npm test` (API handler incl. seed determinism and limits, plus a jsdom test of the React UI). The JS forward pass was checked against PyTorch logits on the same input: max absolute difference 8e-7 over 100 positions.
+
+Inference differs from `generate.py` in two small ways: sampling uses a JS PRNG (a seed reproduces output within the web app, not against PyTorch), and beyond the context window the oldest half is dropped and re-encoded instead of sliding one character at a time.
+
 ## Results
 
 ### Final experiments (80/10/10 split, early stopping on validation loss)

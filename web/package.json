@@ -1,0 +1,22 @@
+{
+  "name": "tiny-shakespeare-chat",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "dev:ui": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node test/api.test.mjs && node test/ui.test.mjs"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "jsdom": "^29.1.1",
+    "vite": "^5.4.11"
+  }
+}
