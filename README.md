@@ -28,6 +28,24 @@ python generate.py "HAMLET:"      # or your own prompts
 ```
 
 ## Results
+
+### Final experiments (80/10/10 split, early stopping on validation loss)
+`run_experiments.sh` trains three configs on GPU (block 256, batch 64, lr 1e-3, patience 4 evals of 250 steps, seed 1337). Train/val/test are cross-entropy in nats per character for the best-validation checkpoint; val and test are full sweeps over the held-out splits (the last 20% of the text, split sequentially into val then test), train is 200 random batches from the train split. This is a single split with a single seed, not cross-validation.
+
+| Config | Params | Dropout / weight decay | Best step | Train | Val | Test | Val ppl | Test ppl |
+|---|---|---|---|---|---|---|---|---|
+| exp_a_baseline | 10.77M | 0.2 / 0.1 | 1500 | 1.1076 | 1.4453 | 1.7995 | 4.24 | 6.05 |
+| exp_b_reg | 10.77M | 0.3 / 0.2 | 2000 | 1.1208 | 1.4389 | 1.7804 | 4.22 | 5.93 |
+| **exp_c_small** (selected) | 3.24M | 0.3 / 0.1 | 5000 | 1.1374 | **1.4338** | 1.8230 | 4.19 | 6.19 |
+
+exp_c_small was selected because it has the lowest validation loss (test was not used for selection). Caveats:
+- The three validation losses are within 0.011 nats of each other with one seed, so they are effectively tied; I would not claim exp_c is truly better. Test loss alone would rank them b < a < c, again by small margins.
+- Test loss is ~0.35 nats higher than validation for every config. The split is sequential, so val and test are different plays from the training text and from each other; the gap is distribution shift, not a bug, and val and test losses are not exchangeable.
+- The larger models (a, b) overfit and early-stopped (steps 2500 and 3000; train loss keeps falling while val rises). The 3.24M model with heavier dropout trained the full 5000 steps without overfitting and was still improving slowly, so the schedule length, not overfitting, limited it.
+- Early-stopped runs stopped before the cosine learning-rate decay finished, so they are not strictly comparable to the full-length run.
+- These numbers use an 80/10/10 split and are not comparable to the initial run below (90/10, final-step model).
+
+### Initial run (90/10 split, final-step model, no early stopping)
 Run on GPU (CUDA): 10.77M parameters, 5000 steps, ~16 min. Loss is cross-entropy in nats per character; train and validation numbers come from 40 random batches of the 90% train split and the held-out last-10% validation split respectively (a single split, no k-fold cross-validation).
 
 | Step | Train loss | Val loss |
