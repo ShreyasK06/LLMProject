@@ -1,0 +1,26 @@
+device=cuda vocab=65 params=3.24M out=exp_c_small
+config: {"block": 256, "batch": 64, "n_layer": 4, "n_head": 4, "n_embd": 256, "dropout": 0.3, "max_steps": 5000, "lr": 0.001, "min_lr": 0.0001, "weight_decay": 0.1, "patience": 4, "eval_every": 250, "eval_iters": 40, "warmup": 100, "seed": 1337}
+step     0 | train 4.2609 | val 4.2571 | 1s *
+step   250 | train 2.2555 | val 2.3342 | 17s *
+step   500 | train 1.7307 | val 1.8574 | 33s *
+step   750 | train 1.5549 | val 1.7091 | 49s *
+step  1000 | train 1.4744 | val 1.6331 | 65s *
+step  1250 | train 1.4048 | val 1.5949 | 82s *
+step  1500 | train 1.3588 | val 1.5457 | 98s *
+step  1750 | train 1.3299 | val 1.5252 | 114s *
+step  2000 | train 1.2971 | val 1.5056 | 130s *
+step  2250 | train 1.2677 | val 1.4878 | 147s *
+step  2500 | train 1.2552 | val 1.4790 | 163s *
+step  2750 | train 1.2264 | val 1.4674 | 179s *
+step  3000 | train 1.2163 | val 1.4570 | 195s *
+step  3250 | train 1.1942 | val 1.4532 | 211s *
+step  3500 | train 1.1819 | val 1.4459 | 228s *
+step  3750 | train 1.1744 | val 1.4422 | 244s *
+step  4000 | train 1.1628 | val 1.4364 | 260s *
+step  4250 | train 1.1535 | val 1.4394 | 276s
+step  4500 | train 1.1500 | val 1.4375 | 292s
+step  4750 | train 1.1411 | val 1.4352 | 309s *
+step  5000 | train 1.1385 | val 1.4338 | 325s *
+saved exp_c_small_final.pt (last step 5000)
+best checkpoint (step 5000) | train 1.1374 | val 1.4338 | test 1.8230 | ppl train 3.12 val 4.19 test 6.19
+wrote exp_c_small_results.json

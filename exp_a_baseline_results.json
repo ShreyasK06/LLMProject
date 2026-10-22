@@ -1,0 +1,31 @@
+{
+  "config": {
+    "block": 256,
+    "batch": 64,
+    "n_layer": 6,
+    "n_head": 6,
+    "n_embd": 384,
+    "dropout": 0.2,
+    "max_steps": 5000,
+    "lr": 0.001,
+    "min_lr": 0.0001,
+    "weight_decay": 0.1,
+    "patience": 4,
+    "eval_every": 250,
+    "eval_iters": 40,
+    "warmup": 100,
+    "seed": 1337
+  },
+  "params": 10770816,
+  "best_step": 1500,
+  "last_step": 2500,
+  "train_loss": 1.1075774532556535,
+  "val_loss": 1.445349748381253,
+  "test_loss": 1.799491747768446,
+  "perplexity": {
+    "train": 3.027016416119564,
+    "val": 4.243335983211162,
+    "test": 6.046573498830149
+  },
+  "eval_iters": 200
+}

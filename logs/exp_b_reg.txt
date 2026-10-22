@@ -1,0 +1,19 @@
+device=cuda vocab=65 params=10.77M out=exp_b_reg
+config: {"block": 256, "batch": 64, "n_layer": 6, "n_head": 6, "n_embd": 384, "dropout": 0.3, "max_steps": 5000, "lr": 0.001, "min_lr": 0.0001, "weight_decay": 0.2, "patience": 4, "eval_every": 250, "eval_iters": 40, "warmup": 100, "seed": 1337}
+step     0 | train 4.2441 | val 4.2439 | 3s *
+step   250 | train 1.9769 | val 2.0604 | 48s *
+step   500 | train 1.5565 | val 1.6979 | 94s *
+step   750 | train 1.4090 | val 1.5847 | 140s *
+step  1000 | train 1.3179 | val 1.5184 | 186s *
+step  1250 | train 1.2452 | val 1.4773 | 231s *
+step  1500 | train 1.2027 | val 1.4574 | 277s *
+step  1750 | train 1.1581 | val 1.4509 | 323s *
+step  2000 | train 1.1192 | val 1.4389 | 369s *
+step  2250 | train 1.0766 | val 1.4519 | 415s
+step  2500 | train 1.0382 | val 1.4548 | 460s
+step  2750 | train 0.9982 | val 1.4541 | 506s
+step  3000 | train 0.9621 | val 1.4686 | 552s
+early stop at step 3000: no val improvement for 4 evals (best step 2000)
+saved exp_b_reg_final.pt (last step 3000)
+best checkpoint (step 2000) | train 1.1208 | val 1.4389 | test 1.7804 | ppl train 3.07 val 4.22 test 5.93
+wrote exp_b_reg_results.json

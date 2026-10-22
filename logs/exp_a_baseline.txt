@@ -1,0 +1,17 @@
+device=cuda vocab=65 params=10.77M out=exp_a_baseline
+config: {"block": 256, "batch": 64, "n_layer": 6, "n_head": 6, "n_embd": 384, "dropout": 0.2, "max_steps": 5000, "lr": 0.001, "min_lr": 0.0001, "weight_decay": 0.1, "patience": 4, "eval_every": 250, "eval_iters": 40, "warmup": 100, "seed": 1337}
+step     0 | train 4.2441 | val 4.2439 | 3s *
+step   250 | train 1.8921 | val 1.9840 | 45s *
+step   500 | train 1.4763 | val 1.6336 | 89s *
+step   750 | train 1.3317 | val 1.5344 | 134s *
+step  1000 | train 1.2374 | val 1.4850 | 180s *
+step  1250 | train 1.1617 | val 1.4512 | 225s *
+step  1500 | train 1.1069 | val 1.4453 | 271s *
+step  1750 | train 1.0481 | val 1.4550 | 317s
+step  2000 | train 0.9908 | val 1.4710 | 363s
+step  2250 | train 0.9261 | val 1.5021 | 409s
+step  2500 | train 0.8669 | val 1.5229 | 454s
+early stop at step 2500: no val improvement for 4 evals (best step 1500)
+saved exp_a_baseline_final.pt (last step 2500)
+best checkpoint (step 1500) | train 1.1076 | val 1.4453 | test 1.7995 | ppl train 3.03 val 4.24 test 6.05
+wrote exp_a_baseline_results.json
