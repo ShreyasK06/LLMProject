@@ -45,6 +45,39 @@ exp_c_small was selected because it has the lowest validation loss (test was not
 - Early-stopped runs stopped before the cosine learning-rate decay finished, so they are not strictly comparable to the full-length run.
 - These numbers use an 80/10/10 split and are not comparable to the initial run below (90/10, final-step model).
 
+### Sample generations from the selected model (exp_c_small, best checkpoint)
+`python generate.py --ckpt exp_c_small_best.pt` (300 characters, temperature 0.8, top-k 40, seed 0). Full output in [`generate_output_final.txt`](generate_output_final.txt); excerpts:
+
+```
+PROMPT: 'First Citizen:\nBefore we proceed'
+First Citizen:
+Before we proceed to be a certain of his life,
+To Brittany, but fear?
+
+First Senator:
+Sir, you must perform you be to the country:
+So you are slain; true, to the consul.
+
+MENENIUS:
+How is't the very points have found, I must be
+believe it so, and well feather of wanton; to complain.
+
+PROMPT: 'KING HENRY:\nMy lords,'
+KING HENRY:
+My lords, and purchance, as I saw thee on.
+
+KING RICHARD III:
+I would not with my body words thea
+Could resign the realm of my order age:
+But I am great as thou deny to speak:
+Weep'st thou there to pray thee as I am.
+
+STANLEY:
+Heavens my gracious lord.
+```
+
+Observations (qualitative, from five samples at one seed, so not a measured comparison with the initial run): play formatting, speaker names, verse-length lines and period vocabulary are all reproduced, and the speakers that appear are plausible for the prompt's context (MENENIUS and SICINIUS after a Roman-citizen prompt; KING RICHARD III and STANLEY after KING HENRY). Individual lines are often grammatical, but meaning does not carry across lines, and there are still occasional non-words ("thea", "receivern", "devotion'd"). This is expected for a character-level model with ~3M parameters trained on ~1 MB: it learns surface statistics and local structure, not content.
+
 ### Initial run (90/10 split, final-step model, no early stopping)
 Run on GPU (CUDA): 10.77M parameters, 5000 steps, ~16 min. Loss is cross-entropy in nats per character; train and validation numbers come from 40 random batches of the 90% train split and the held-out last-10% validation split respectively (a single split, no k-fold cross-validation).
 
