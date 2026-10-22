@@ -25,7 +25,27 @@ function sendJson(res, status, obj) {
   res.end(JSON.stringify(obj));
 }
 
+// The frontend on GitHub Pages calls this function from another origin, so allow it (and local dev) explicitly.
+// Override with a comma-separated ALLOWED_ORIGINS environment variable on the host.
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "https://shreyask06.github.io").split(",").map((s) => s.trim());
+function applyCors(req, res) {
+  const origin = req.headers?.origin;
+  if (!origin || !(ALLOWED_ORIGINS.includes(origin) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin))) return;
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Access-Control-Expose-Headers", "X-Dropped-Chars");
+  res.setHeader("Vary", "Origin");
+}
+
 export default async function handler(req, res) {
+  applyCors(req, res);
+  if (req.method === "OPTIONS") { // CORS preflight for the JSON POST: answer before loading the model
+    res.statusCode = 204;
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Access-Control-Max-Age", "86400");
+    return res.end();
+  }
+
   let model;
   try {
     model = getModel();

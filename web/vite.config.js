@@ -18,4 +18,5 @@ function apiDev() {
   };
 }
 
-export default defineConfig({ plugins: [react(), apiDev()] });
+// VITE_BASE is the sub-path when hosted on GitHub Pages (e.g. /LLMProject/); asset URLs are derived from it by Vite.
+export default defineConfig({ base: process.env.VITE_BASE || "/", plugins: [react(), apiDev()] });

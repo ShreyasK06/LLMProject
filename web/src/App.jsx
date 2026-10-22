@@ -10,7 +10,12 @@ const BOT_NAME = "Assistant";
 const STOP = ["\n\n"];
 const HISTORY_CHARS = 500; // the model attends to at most ~256 characters anyway
 
-const DEFAULTS = { temperature: 0.8, topK: 40, maxChars: 300, seed: "", carry: true };
+// Empty when the API is on the same origin (dev server, Vercel). On GitHub Pages the build sets VITE_API_URL to the
+// Vercel deployment, e.g. https://tiny-gpt.vercel.app
+const API = `${(import.meta.env.VITE_API_URL || "").replace(/\/$/, "")}/api/generate`;
+
+// Training replies were cut at 400 characters, so a longer cap lets a reply end at its own blank line.
+const DEFAULTS = { temperature: 0.8, topK: 40, maxChars: 400, seed: "", carry: true };
 
 const turn = (who, text) => `${who}:\n${text}`;
 function buildPrompt(history, text) {
@@ -37,7 +42,7 @@ export default function App() {
   const endRef = useRef(null);
 
   useEffect(() => {
-    fetch("/api/generate")
+    fetch(API)
       .then(async (r) => {
         const j = await r.json();
         setStatus(r.ok ? { state: "ready", ...j } : { state: "error", error: j.error || "Model unavailable" });
@@ -75,7 +80,7 @@ export default function App() {
       let reply = "";
       try {
         const seed = settings.seed === "" ? null : parseInt(settings.seed, 10);
-        const res = await fetch("/api/generate", {
+        const res = await fetch(API, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -231,7 +236,7 @@ export default function App() {
             <label htmlFor="topk">
               Top-k <output>{settings.topK}</output>
             </label>
-            <input id="topk" type="range" min="1" max="65" step="1" value={settings.topK} onChange={set("topK")} />
+            <input id="topk" type="range" min="1" max={ready ? status.vocab : 95} step="1" value={settings.topK} onChange={set("topK")} />
             <small>Sample only from the k likeliest next characters.</small>
 
             <label htmlFor="len">
