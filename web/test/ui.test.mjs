@@ -10,6 +10,7 @@ import { createServer } from "vite";
 const dom = new JSDOM("<!doctype html><div id='root'></div>", { url: "http://localhost/", pretendToBeVisual: true });
 Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true });
 Object.defineProperty(globalThis, "navigator", { value: dom.window.navigator, configurable: true });
+Object.defineProperty(globalThis, "localStorage", { value: dom.window.localStorage, configurable: true });
 dom.window.HTMLElement.prototype.scrollIntoView = () => {};
 
 const enc = new TextEncoder();
@@ -81,8 +82,25 @@ await act(async () => document.querySelector("button.primary").click());
 await flush();
 assert.equal(bodies[2].prompt, "User:\nAgain\n\nAssistant:\n", "no history when memory is off");
 
-await act(async () => [...document.querySelectorAll("button")].find((b) => b.textContent === "Clear chat").click());
-assert.equal(document.querySelectorAll(".bubble").length, 0, "clear empties the chat");
+await act(async () => document.querySelector('button[aria-label="New chat"]').click());
+assert.equal(document.querySelectorAll(".bubble").length, 0, "new chat empties the thread");
+assert.equal(document.querySelectorAll("button.chip").length, 4, "the example prompts come back");
+
+// settings drawer: closed by default, opens from the toggle and closes on Escape
+const toggle = document.querySelector('button[aria-label="Settings"]');
+const drawer = document.getElementById("settings");
+assert.equal(toggle.getAttribute("aria-expanded"), "false");
+assert.ok(!drawer.classList.contains("open"));
+await act(async () => toggle.click());
+assert.equal(toggle.getAttribute("aria-expanded"), "true");
+assert.ok(drawer.classList.contains("open"));
+await act(async () => { dom.window.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Escape" })); });
+assert.ok(!drawer.classList.contains("open"), "Escape closes the drawer");
+
+// theme toggle sets data-theme on <html> and remembers it
+await act(async () => document.querySelector('button[aria-label^="Switch to"]').click());
+assert.equal(document.documentElement.dataset.theme, "dark");
+assert.equal(dom.window.localStorage.getItem("theme"), "dark");
 
 console.log("ui tests passed");
 await act(async () => root.unmount());
