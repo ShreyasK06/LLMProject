@@ -34,6 +34,13 @@ assert.equal(long.chunks.join("").length, 1000, "generation past the context win
 const dropped = await call("POST", { prompt: "ROMEO:{}~", maxChars: 5 });
 assert.equal(dropped.headers["x-dropped-chars"], "3");
 
+const stopped = await call("POST", { prompt: "User:\nHello\n\nAssistant:\n", maxChars: 400, seed: 3, stop: ["\n\n"] });
+const stoppedText = stopped.chunks.join("");
+assert.ok(stoppedText.length > 0 && stoppedText.length < 400, "reply ends at the stop string, before maxChars");
+assert.ok(!stoppedText.includes("\n\n") && !stoppedText.endsWith("\n"), "the stop string is never sent");
+const unstopped = await call("POST", { prompt: "User:\nHello\n\nAssistant:\n", maxChars: 400, seed: 3 });
+assert.ok(unstopped.chunks.join("").startsWith(stoppedText), "stopping only truncates; it does not change sampling");
+
 assert.equal((await call("POST", { prompt: "{}~" })).statusCode, 400);
 assert.equal((await call("POST", {})).statusCode, 400);
 assert.equal((await call("POST", { prompt: "x".repeat(5000) })).statusCode, 400);

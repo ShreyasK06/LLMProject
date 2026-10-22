@@ -42,7 +42,7 @@ const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 20)
 await act(async () => root.render(React.createElement(App)));
 await flush();
 
-assert.match(document.body.textContent, /Tiny Shakespeare GPT/);
+assert.match(document.body.textContent, /Tiny GPT Chat/);
 assert.match(document.body.textContent, /0\.8M params/, "status pill shows the model size");
 const chips = [...document.querySelectorAll("button.chip")];
 assert.equal(chips.length, 4);
@@ -50,22 +50,36 @@ assert.equal(chips.length, 4);
 await act(async () => chips[0].click());
 await flush();
 const bubbles = [...document.querySelectorAll(".bubble")].map((b) => b.textContent);
-assert.deepEqual(bubbles, ["ROMEO:", "Hello there"], "user prompt and streamed reply are rendered");
-assert.equal(bodies[0].prompt, "ROMEO:");
+assert.deepEqual(bubbles, ["Hello, how are you?", "Hello there"], "user message and streamed reply are rendered");
+assert.equal(bodies[0].prompt, "User:\nHello, how are you?\n\nAssistant:\n", "message is framed as a User/Assistant transcript");
+assert.deepEqual(bodies[0].stop, ["\n\n"], "reply stops at the end of the speech");
 assert.equal(bodies[0].temperature, 0.8);
 assert.equal(bodies[0].seed, null);
 
-// carry-context: second prompt must include the first exchange
-await act(async () => { document.getElementById("carry").click(); });
+// memory is on by default: the second prompt must include the first exchange; extra whitespace is collapsed
 const ta = document.getElementById("prompt");
 await act(async () => {
-  Object.getOwnPropertyDescriptor(dom.window.HTMLTextAreaElement.prototype, "value").set.call(ta, "JULIET:");
+  Object.getOwnPropertyDescriptor(dom.window.HTMLTextAreaElement.prototype, "value").set.call(ta, "And you?\n\n  Truly.");
   ta.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
 });
 await act(async () => document.querySelector("button.primary").click());
 await flush();
-assert.equal(bodies[1].prompt, "ROMEO:Hello there\nJULIET:", "context is carried when enabled");
+assert.equal(
+  bodies[1].prompt,
+  "User:\nHello, how are you?\n\nAssistant:\nHello there\n\nUser:\nAnd you? Truly.\n\nAssistant:\n",
+  "history is carried and the message is single-line",
+);
 assert.equal(document.querySelectorAll(".bubble").length, 4);
+
+// with memory off, the next prompt starts a fresh scene
+await act(async () => { document.getElementById("carry").click(); });
+await act(async () => {
+  Object.getOwnPropertyDescriptor(dom.window.HTMLTextAreaElement.prototype, "value").set.call(ta, "Again");
+  ta.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+});
+await act(async () => document.querySelector("button.primary").click());
+await flush();
+assert.equal(bodies[2].prompt, "User:\nAgain\n\nAssistant:\n", "no history when memory is off");
 
 await act(async () => [...document.querySelectorAll("button")].find((b) => b.textContent === "Clear chat").click());
 assert.equal(document.querySelectorAll(".bubble").length, 0, "clear empties the chat");

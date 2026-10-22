@@ -1,13 +1,28 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const EXAMPLES = [
-  "ROMEO:",
-  "First Citizen:\nBefore we proceed",
-  "KING HENRY:\nMy lords,",
-  "To be, or not to be",
-];
+const EXAMPLES = ["Hello, how are you?", "What is the capital of France?", "Give me ideas for a birthday party.", "Explain what a computer is."];
 
-const DEFAULTS = { temperature: 0.8, topK: 40, maxChars: 300, seed: "", carry: false };
+// The model only continues text, so a chat is framed as a transcript, the same User/Assistant format prepare_dolly.py
+// trains on: the user speaks as "User" and the model writes the "Assistant" reply. A blank line ends a speech, which is
+// where the reply stops.
+const USER_NAME = "User";
+const BOT_NAME = "Assistant";
+const STOP = ["\n\n"];
+const HISTORY_CHARS = 500; // the model attends to at most ~256 characters anyway
+
+const DEFAULTS = { temperature: 0.8, topK: 40, maxChars: 300, seed: "", carry: true };
+
+const turn = (who, text) => `${who}:\n${text}`;
+function buildPrompt(history, text) {
+  const kept = [];
+  let size = 0;
+  for (let i = history.length - 1; i >= 0; i--) {
+    size += history[i].length + 2;
+    if (size > HISTORY_CHARS) break;
+    kept.unshift(history[i]);
+  }
+  return [...kept, turn(USER_NAME, text)].join("\n\n") + `\n\n${BOT_NAME}:\n`;
+}
 
 export default function App() {
   const [messages, setMessages] = useState([]);
@@ -18,7 +33,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const abortRef = useRef(null);
-  const contextRef = useRef("");
+  const historyRef = useRef([]); // finished turns, formatted as script lines
   const endRef = useRef(null);
 
   useEffect(() => {
@@ -39,15 +54,13 @@ export default function App() {
 
   const send = useCallback(
     async (raw) => {
-      const text = raw.replace(/\s+$/, "");
+      const text = raw.replace(/\s+/g, " ").trim(); // a blank line would read as the end of the speech
       if (!text || busy) return;
       setInput("");
       setNotice("");
       setBusy(true);
 
-      let context = settings.carry ? contextRef.current.slice(-1500) : "";
-      if (context && !context.endsWith("\n")) context += "\n";
-      const prompt = context + text;
+      const prompt = buildPrompt(settings.carry ? historyRef.current : [], text);
 
       setMessages((m) => [...m, { role: "user", content: text }, { role: "assistant", content: "" }]);
       const patchLast = (fn) =>
@@ -71,6 +84,7 @@ export default function App() {
             topK: Number(settings.topK),
             maxChars: Number(settings.maxChars),
             seed: Number.isInteger(seed) ? seed : null,
+            stop: STOP,
           }),
           signal: ctrl.signal,
         });
@@ -88,12 +102,13 @@ export default function App() {
           if (done) break;
           const chunk = decoder.decode(value, { stream: true });
           reply += chunk;
-          patchLast((l) => ({ ...l, content: l.content + chunk }));
+          patchLast((l) => ({ ...l, content: reply.trimStart() }));
         }
+        patchLast((l) => ({ ...l, content: reply.trim() || "…" }));
       } catch (e) {
         if (e.name !== "AbortError") patchLast(() => ({ role: "error", content: "Connection lost. Try again." }));
       } finally {
-        contextRef.current = prompt + reply;
+        if (reply.trim()) historyRef.current.push(turn(USER_NAME, text), turn(BOT_NAME, reply.trim()));
         abortRef.current = null;
         setBusy(false);
       }
@@ -106,7 +121,7 @@ export default function App() {
     abortRef.current?.abort();
     setMessages([]);
     setNotice("");
-    contextRef.current = "";
+    historyRef.current = [];
   };
 
   const onKeyDown = (e) => {
@@ -123,11 +138,11 @@ export default function App() {
       <header className="top">
         <div>
           <h1>
-            <span aria-hidden="true">🎭</span> Tiny Shakespeare GPT
+            <span aria-hidden="true">💬</span> Tiny GPT Chat
           </h1>
           <p className="sub">
-            A small GPT trained from scratch on Shakespeare. It isn't an assistant: it <em>continues</em> what you
-            type, like a play script. Try a speaker name followed by a colon.
+            Chat with a small GPT trained from scratch, one character at a time. It is tiny, so replies sound like
+            answers but are often wrong or nonsensical.
           </p>
         </div>
         <div className="top-actions">
@@ -148,11 +163,11 @@ export default function App() {
           <section className="chat" aria-live="polite" aria-label="Conversation">
             {messages.length === 0 ? (
               <div className="empty">
-                <p>Start a scene, or pick one:</p>
+                <p>Say something, or pick a message:</p>
                 <div className="chips">
                   {EXAMPLES.map((ex) => (
                     <button key={ex} type="button" className="chip" disabled={!ready || busy} onClick={() => send(ex)}>
-                      {ex.replace("\n", " ⏎ ")}
+                      {ex}
                     </button>
                   ))}
                 </div>
@@ -160,7 +175,7 @@ export default function App() {
             ) : (
               messages.map((m, i) => (
                 <div key={i} className={`msg ${m.role}`}>
-                  <span className="who">{m.role === "user" ? "You" : m.role === "error" ? "Error" : "Model"}</span>
+                  <span className="who">{m.role === "user" ? "You" : m.role === "error" ? "Error" : "Bot"}</span>
                   <div className="bubble">
                     {m.content}
                     {busy && i === messages.length - 1 && m.role === "assistant" && <span className="caret" />}
@@ -189,7 +204,7 @@ export default function App() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKeyDown}
-              placeholder="ROMEO:   (Enter to send, Shift+Enter for a new line)"
+              placeholder="Type a message… (Enter to send)"
               disabled={!ready}
             />
             {busy ? (
@@ -229,9 +244,9 @@ export default function App() {
 
             <label className="check" htmlFor="carry">
               <input id="carry" type="checkbox" checked={settings.carry} onChange={set("carry")} />
-              Carry the conversation as context
+              Remember the conversation
             </label>
-            <small>Off: every message is a fresh prompt. On: the model also sees what was said before.</small>
+            <small>On: the model sees the last few turns. Off: every message starts a fresh scene.</small>
 
             <button type="button" className="ghost wide" onClick={clear}>
               Clear chat

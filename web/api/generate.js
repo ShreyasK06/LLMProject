@@ -69,11 +69,22 @@ export default async function handler(req, res) {
   res.setHeader("X-Accel-Buffering", "no");
   res.setHeader("X-Dropped-Chars", String(dropped));
 
+  // Optional stop strings end the reply early (e.g. "\n\n" = end of a speech). Output that could still turn into a stop
+  // string is held back, so the stop string itself is never sent.
+  const stops = Array.isArray(body.stop) ? body.stop.filter((s) => typeof s === "string" && s).slice(0, 4) : [];
+  const couldStart = (s) => stops.some((t) => t.startsWith(s));
+
   let closed = false;
   res.on("close", () => { closed = true; });
+  let held = "";
   for (const ch of generate(model, ids, opts)) {
     if (closed) return;
-    res.write(ch);
+    held += ch;
+    if (stops.some((t) => held.endsWith(t))) return res.end();
+    let k = 0;
+    while (k < held.length && !couldStart(held.slice(k))) k++;
+    if (k) { res.write(held.slice(0, k)); held = held.slice(k); }
   }
+  if (held) res.write(held);
   res.end();
 }
