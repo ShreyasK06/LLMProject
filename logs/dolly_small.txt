@@ -1,0 +1,26 @@
+device=cuda data=data/dolly_chat.txt chars=2879010 vocab=95 params=3.31M out=dolly_small
+config: {"block": 512, "batch": 32, "n_layer": 4, "n_head": 4, "n_embd": 256, "dropout": 0.3, "max_steps": 5000, "lr": 0.001, "min_lr": 0.0001, "weight_decay": 0.1, "patience": 4, "eval_every": 250, "eval_iters": 40, "warmup": 100, "seed": 1337}
+step     0 | train 4.5826 | val 4.5820 | 1s *
+step   250 | train 2.3740 | val 2.3755 | 19s *
+step   500 | train 2.1160 | val 2.1173 | 36s *
+step   750 | train 1.7923 | val 1.8035 | 53s *
+step  1000 | train 1.6294 | val 1.6502 | 71s *
+step  1250 | train 1.5457 | val 1.5772 | 89s *
+step  1500 | train 1.4747 | val 1.5072 | 107s *
+step  1750 | train 1.3979 | val 1.4361 | 125s *
+step  2000 | train 1.3397 | val 1.3760 | 143s *
+step  2250 | train 1.2920 | val 1.3288 | 162s *
+step  2500 | train 1.2508 | val 1.2987 | 180s *
+step  2750 | train 1.2243 | val 1.2805 | 198s *
+step  3000 | train 1.2103 | val 1.2612 | 216s *
+step  3250 | train 1.1922 | val 1.2442 | 234s *
+step  3500 | train 1.1812 | val 1.2316 | 253s *
+step  3750 | train 1.1659 | val 1.2256 | 271s *
+step  4000 | train 1.1509 | val 1.2096 | 289s *
+step  4250 | train 1.1358 | val 1.2024 | 308s *
+step  4500 | train 1.1344 | val 1.1989 | 326s *
+step  4750 | train 1.1294 | val 1.1921 | 344s *
+step  5000 | train 1.1210 | val 1.1896 | 362s *
+saved dolly_small_final.pt (last step 5000)
+best checkpoint (step 5000) | train 1.1223 | val 1.1896 | test 1.1842 | ppl train 3.07 val 3.29 test 3.27
+wrote dolly_small_results.json
