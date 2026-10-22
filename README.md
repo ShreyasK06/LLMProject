@@ -180,16 +180,37 @@ believe it so, and well feather of wanton; to complain.
 
 **What it did not learn:** meaning. Individual lines are often grammatical, but nothing connects from one line to the next, and there are occasional invented words ("thea", "receivern"). That is expected from a 3M-parameter character-level model trained on 1 MB: it captures surface statistics and local structure, not content or plot. (The first run's samples, from the overfit model, are in `generate_output.txt`; they show the same pattern.)
 
+## 6b. Second model: a chat model trained on Dolly 15k
+
+The Shakespeare model can only write plays, so for a more conversational demo the same code was trained, again from random initialization, on [Databricks Dolly 15k](https://huggingface.co/datasets/databricks/databricks-dolly-15k): human-written instruction and response pairs on general topics (CC BY-SA 3.0). `prepare_dolly.py` formats each pair as `User:` / `Assistant:` text, keeping only examples without a context passage, ASCII characters only, and responses cut at a sentence end (400 characters at most). The result is 2.88 million characters with a 95-character vocabulary. Examples are shuffled before the sequential 80/10/10 split, so validation and test are drawn from the same mix as training.
+
+Both configurations use a 512-character context, batch 32, dropout 0.3 and early stopping (patience 4). Every number comes from the best-validation checkpoint; single seed (1337), loss in nats per character.
+
+| Config | Parameters | Best step (last) | Train | Val | Test | Val perplexity |
+|---|---|---|---|---|---|---|
+| `dolly_small` (4 layers, width 256) | 3.31M | 5000 (5000) | 1.1223 | 1.1896 | 1.1842 | 3.29 |
+| `dolly_large` (6 layers, width 384, weight decay 0.2) | 10.88M | 4750 (5000) | 0.8931 | 1.0646 | 1.0602 | 2.90 |
+
+**Reading the table.**
+- The larger model is clearly better: 0.125 nats lower on validation and 0.124 lower on test. That is more than ten times the gap between the three Shakespeare configurations, though it is still one seed.
+- The small model ran the full 5,000 steps with validation loss still falling, so it was cut off by the step cap, not by early stopping. The large model had plateaued (val 1.0646 at step 4750, 1.0659 at 5000) and shows more overfitting: its train/val gap is 0.17 against 0.07.
+- Validation and test agree closely here, unlike the Shakespeare runs, because the split is shuffled by example rather than sequential.
+- These losses cannot be compared with the Shakespeare numbers: different text, a different vocabulary, and a different split.
+
+**What the samples show** (`generate_dolly_large.txt`, `generate_dolly_small.txt`; temperature 0.8, top-k 40, seed 0). Given `What is the capital of France?`, the large model writes "There are many capital of France - in the United States of America is Ronaldo and a United States of America - Italy in Asia - …", and for `Explain what a computer is.` it writes "Computer computer should be made of sava-budget, from quiet computer, and and pooling the contrast of remember of computer system. …". It has learned the shape of an answer (opening phrases, lists, on-topic vocabulary) but not facts or meaning; replies read like fluent noise. That is what this scale gives: 10M parameters, 2.9M characters, one character at a time. A model that actually answers questions needs orders of magnitude more data and parameters, and a subword tokenizer.
+
+**Speed in the web app.** The JavaScript inference runs at about 25 ms per character for the large model and 6 ms for the small one (measured on a laptop CPU with randomly initialized weights of each size, so a 400-character reply takes about 10 s and 2.5 s). Streaming shows text as it is produced, and the Vercel function limit is set to 60 s.
+
 ## 7. The chat web app (`web/`)
 
 A React (Vite) interface with a Vercel serverless backend.
 
-- **Why the model runs in JavaScript:** Vercel's Python runtime cannot hold PyTorch. The model is small (13 MB of weights), so `web/lib/gpt.js` reimplements the forward pass in plain JavaScript with a key/value cache, so each new character costs only a single-position computation. `export_weights.py` converts the checkpoint into `weights.bin` plus `model.json`.
+- **Why the model runs in JavaScript:** Vercel's Python runtime cannot hold PyTorch. The models are small (13 MB of weights for the 3.2M-parameter Shakespeare model, about 44 MB for the 10.9M-parameter chat model), so `web/lib/gpt.js` reimplements the forward pass in plain JavaScript with a key/value cache, so each new character costs only a single-position computation. `export_weights.py` converts the checkpoint into `weights.bin` plus `model.json`.
 - **Correctness check:** the JavaScript forward pass was compared against PyTorch on the same input; the largest difference in the output logits was 8e-7 over 100 positions.
 - **Backend (`web/api/generate.js`):** `POST` with a prompt and settings streams the generated characters back as plain text; `GET` reports model status. Inputs are validated and clamped (prompt length, reply length, temperature, top-k).
 - **Frontend (`web/src/App.jsx`):** a chat view that renders the stream as it arrives, with a Stop button, example prompts, and settings for temperature, top-k, reply length and seed. There is also an option to carry the conversation as context.
 - **How the chat works.** The model only continues text, so the UI frames the conversation as a transcript (`User:` / `Assistant:` turns, the same format the chat training data uses) and the backend stops generating at the first blank line, which ends the assistant's turn. The last few turns are sent back as context (this can be switched off). Characters outside the model's vocabulary are dropped, and the UI says so.
-- **It is not an assistant.** It is a base model trained from scratch, so it imitates the shape of replies without knowing facts (see section 8 for the chat-trained version).
+- **It is not an assistant.** It is a base model trained from scratch, so it imitates the shape of replies without knowing facts (see section 6b for the chat-trained version).
 - **Tests:** `cd web && npm test` runs the API handler tests (streaming, seed determinism, limits, long generation) and a simulated-browser test of the real React app. A seed reproduces output within the web app, though not identically to the Python script (different random number generator). Beyond the 256-character context the web version drops the oldest half and re-reads the rest, rather than sliding one character at a time.
 
 ## 8. Reproduce it
@@ -202,7 +223,7 @@ python generate.py --ckpt exp_c_small_best.pt "ROMEO:"
 
 # web app
 python export_weights.py --ckpt exp_c_small_best.pt   # writes web/model/{weights.bin,model.json}
-cd web && npm install && npm run dev                  # UI and API together, no Vercel login needed
+cd web && npm install && npm run dev:ui              # UI and API together on localhost:5173, no Vercel login needed
 ```
 
 ### Chat model (Databricks Dolly 15k)
@@ -211,13 +232,19 @@ To get a conversational model instead of a Shakespeare one, the same code is tra
 
 ```
 bash run_dolly.sh        # prepare_dolly.py, then two configs (4x256 and 6x384, block 512), then sample replies
-python generate.py --chat --ckpt dolly_small_best.pt "What is the capital of France?"
-python export_weights.py --ckpt dolly_small_best.pt   # then commit web/model/ to update the web app
+python generate.py --chat --ckpt dolly_large_best.pt "What is the capital of France?"
+python export_weights.py --ckpt dolly_large_best.pt   # the selected model; then commit web/model/ to update the web app
 ```
 
-`prepare_dolly.py` downloads [Dolly 15k](https://huggingface.co/datasets/databricks/databricks-dolly-15k) (about 15,000 human-written instruction and response pairs by Databricks employees, licensed CC BY-SA 3.0) and writes `data/dolly_chat.txt`. It keeps only examples without a context passage, collapses whitespace so a blank line always ends a turn, keeps ASCII characters only, cuts long responses at a sentence end (400 characters at most), and shuffles with a fixed seed, so the sequential 80/10/10 split in `train.py` is not biased by dataset order. Results for these runs are not in this README yet.
+`prepare_dolly.py` downloads [Dolly 15k](https://huggingface.co/datasets/databricks/databricks-dolly-15k) (about 15,000 human-written instruction and response pairs by Databricks employees, licensed CC BY-SA 3.0) and writes `data/dolly_chat.txt`. It keeps only examples without a context passage, collapses whitespace so a blank line always ends a turn, keeps ASCII characters only, cuts long responses at a sentence end (400 characters at most), and shuffles with a fixed seed, so the sequential 80/10/10 split in `train.py` is not biased by dataset order. Results are in section 6b.
 
-To deploy, import the repo into Vercel and set the **Root Directory** to `web`; `web/vercel.json` bundles the model files into the function. The weights (`web/model/`) must be committed first, since the checkpoints themselves (`*.pt`) are git-ignored.
+### Deploying: GitHub Pages frontend, Vercel backend
+
+GitHub Pages serves only static files, so the page and the model live in two places: the React app on GitHub Pages and the JavaScript model behind a Vercel function.
+
+1. **Weights.** Export and commit `web/model/` (the checkpoints themselves, `*.pt`, are git-ignored).
+2. **Backend (Vercel).** Import the repo and set the **Root Directory** to `web`. `web/vercel.json` bundles the model files into the function and allows it 60 s. The function only accepts cross-origin calls from `https://shreyask06.github.io` and localhost; set the `ALLOWED_ORIGINS` environment variable (comma-separated) to change that.
+3. **Frontend (GitHub Pages).** In the repository settings, set Pages to deploy from **GitHub Actions**, and add a repository **variable** named `API_URL` with the Vercel URL (for example `https://your-project.vercel.app`). `.github/workflows/pages.yml` then runs the tests, builds the app with the repository sub-path as its base, and publishes it whenever `web/` changes on `main`. The page appears at `https://shreyask06.github.io/LLMProject/`.
 
 ## 9. Repository map
 
@@ -227,7 +254,8 @@ To deploy, import the repo into Vercel and set the **Root Directory** to `web`; 
 | `train.py` | model, training loop, early stopping, final train/val/test report |
 | `generate.py` | sample text from a saved checkpoint |
 | `run_experiments.sh`, `logs/`, `exp_*_results.json` | the three experiments and their results |
-| `prepare_dolly.py`, `run_dolly.sh` | build the Dolly 15k chat dataset and train the chat models |
+| `prepare_dolly.py`, `run_dolly.sh`, `logs/dolly_*.txt`, `dolly_*_results.json`, `generate_dolly_*.txt` | build the Dolly 15k chat dataset, train the chat models, and their results and samples |
+| `.github/workflows/pages.yml` | builds and publishes the frontend to GitHub Pages |
 | `export_weights.py` | checkpoint to JavaScript-readable weights |
 | `web/` | React UI, Vercel function, JavaScript model, tests |
 | `generate_output*.txt` | full sample generations (initial run and final model) |
