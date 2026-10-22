@@ -1,5 +1,5 @@
 """Train a small character-level GPT from scratch (random init, no pretrained weights)
-on TinyShakespeare using next-token prediction.
+on a text file (default TinyShakespeare; see prepare_dolly.py for chat data) using next-token prediction.
 
 Data is split 80/10/10 (sequential) into train/val/test. Val drives checkpoint selection and
 early stopping; test loss is reported once, at the end, for the best-val checkpoint."""
@@ -27,17 +27,18 @@ def default_config():
     return cfg
 
 
-text = open("data/input.txt", encoding="utf-8").read()
-chars = sorted(set(text))
-vocab_size = len(chars)
-stoi = {c: i for i, c in enumerate(chars)}
-itos = {i: c for c, i in stoi.items()}
-encode = lambda s: [stoi[c] for c in s]
-decode = lambda ids: "".join(itos[i] for i in ids)
+splits = {}  # filled by load_data()
 
-data = torch.tensor(encode(text), dtype=torch.long)
-n_train, n_val = int(0.8 * len(data)), int(0.9 * len(data))
-splits = {"train": data[:n_train], "val": data[n_train:n_val], "test": data[n_val:]}
+
+def load_data(path):
+    """Read a text file, build the character vocabulary, fill `splits`, and return the vocabulary."""
+    text = open(path, encoding="utf-8").read()
+    chars = sorted(set(text))
+    stoi = {c: i for i, c in enumerate(chars)}
+    data = torch.tensor([stoi[c] for c in text], dtype=torch.long)
+    n_train, n_val = int(0.8 * len(data)), int(0.9 * len(data))
+    splits.update(train=data[:n_train], val=data[n_train:n_val], test=data[n_val:])
+    return chars
 
 
 def get_batch(split, block, batch):
@@ -79,7 +80,7 @@ class Block(nn.Module):
 
 
 class GPT(nn.Module):
-    def __init__(self, cfg):
+    def __init__(self, cfg, vocab_size):
         super().__init__()
         self.block = cfg["block"]
         self.tok = nn.Embedding(vocab_size, cfg["n_embd"])
@@ -101,7 +102,7 @@ class GPT(nn.Module):
         B, T = idx.shape
         x = self.tok(idx) + self.pos(torch.arange(T, device=idx.device))
         logits = self.head(self.ln_f(self.blocks(x)))
-        loss = None if targets is None else F.cross_entropy(logits.view(-1, vocab_size), targets.view(-1))
+        loss = None if targets is None else F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
         return logits, loss
 
     @torch.no_grad()
@@ -143,7 +144,8 @@ def lr_at(step, cfg):
 
 def parse_args():
     d = default_config()
-    ap = argparse.ArgumentParser(description="Train a char-level GPT on TinyShakespeare.")
+    ap = argparse.ArgumentParser(description="Train a char-level GPT from scratch on a text file.")
+    ap.add_argument("--data", default="data/input.txt", help="training text (default: TinyShakespeare)")
     for k in ("n_layer", "n_head", "n_embd", "block", "batch", "max_steps", "seed", "eval_every", "eval_iters"):
         ap.add_argument(f"--{k}", type=int, default=d[k])
     for k in ("dropout", "lr", "min_lr", "weight_decay"):
@@ -156,13 +158,16 @@ def parse_args():
 
 def main():
     args = parse_args()
-    cfg = {**default_config(), **{k: v for k, v in vars(args).items() if k != "out"}}
+    cfg = {**default_config(), **{k: v for k, v in vars(args).items() if k not in ("out", "data")}}
     assert cfg["n_embd"] % cfg["n_head"] == 0, "n_embd must be divisible by n_head"
     torch.manual_seed(cfg["seed"])
     out = args.out
-    model = GPT(cfg).to(device)
+    chars = load_data(args.data)
+    vocab_size = len(chars)
+    model = GPT(cfg, vocab_size).to(device)
     n_params = sum(p.numel() for p in model.parameters())
-    print(f"device={device} vocab={vocab_size} params={n_params / 1e6:.2f}M out={out}", flush=True)
+    print(f"device={device} data={args.data} chars={sum(len(s) for s in splits.values())} vocab={vocab_size} "
+          f"params={n_params / 1e6:.2f}M out={out}", flush=True)
     print("config:", json.dumps(cfg), flush=True)
     # decay only weight matrices; exempt biases, LayerNorm gains and the (tied) embeddings
     nodecay_ids = {id(p) for n, p in model.named_parameters() if p.ndim < 2 or n.startswith(("tok.", "pos."))}
@@ -210,7 +215,8 @@ def main():
     print(f"best checkpoint (step {best_step}) | train {r['train']:.4f} | val {r['val']:.4f} | test {r['test']:.4f}"
           f" | ppl train {ppl['train']:.2f} val {ppl['val']:.2f} test {ppl['test']:.2f}")
     with open(f"{out}_results.json", "w") as f:
-        json.dump({"config": cfg, "params": n_params, "best_step": best_step, "last_step": step,
+        json.dump({"data": args.data, "vocab_size": vocab_size, "config": cfg, "params": n_params,
+                   "best_step": best_step, "last_step": step,
                    "train_loss": r["train"], "val_loss": r["val"], "test_loss": r["test"],
                    "perplexity": ppl, "eval_iters": iters}, f, indent=2)
     print(f"wrote {out}_results.json")

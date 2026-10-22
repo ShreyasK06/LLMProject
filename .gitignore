@@ -6,3 +6,5 @@ venv/
 .claude-flow/
 -p/
 train_log.txt
+data/dolly_raw.jsonl
+data/dolly_chat.txt

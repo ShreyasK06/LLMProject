@@ -188,7 +188,8 @@ A React (Vite) interface with a Vercel serverless backend.
 - **Correctness check:** the JavaScript forward pass was compared against PyTorch on the same input; the largest difference in the output logits was 8e-7 over 100 positions.
 - **Backend (`web/api/generate.js`):** `POST` with a prompt and settings streams the generated characters back as plain text; `GET` reports model status. Inputs are validated and clamped (prompt length, reply length, temperature, top-k).
 - **Frontend (`web/src/App.jsx`):** a chat view that renders the stream as it arrives, with a Stop button, example prompts, and settings for temperature, top-k, reply length and seed. There is also an option to carry the conversation as context.
-- **It is not an assistant.** This is a base model: each message is treated as the start of a passage and the model continues it, like a play script. Typing a speaker name and a colon works best. Characters outside the 65-character vocabulary are dropped, and the UI says so.
+- **How the chat works.** The model only continues text, so the UI frames the conversation as a transcript (`User:` / `Assistant:` turns, the same format the chat training data uses) and the backend stops generating at the first blank line, which ends the assistant's turn. The last few turns are sent back as context (this can be switched off). Characters outside the model's vocabulary are dropped, and the UI says so.
+- **It is not an assistant.** It is a base model trained from scratch, so it imitates the shape of replies without knowing facts (see section 8 for the chat-trained version).
 - **Tests:** `cd web && npm test` runs the API handler tests (streaming, seed determinism, limits, long generation) and a simulated-browser test of the real React app. A seed reproduces output within the web app, though not identically to the Python script (different random number generator). Beyond the 256-character context the web version drops the oldest half and re-reads the rest, rather than sliding one character at a time.
 
 ## 8. Reproduce it
@@ -204,6 +205,18 @@ python export_weights.py --ckpt exp_c_small_best.pt   # writes web/model/{weight
 cd web && npm install && npm run dev                  # UI and API together, no Vercel login needed
 ```
 
+### Chat model (Databricks Dolly 15k)
+
+To get a conversational model instead of a Shakespeare one, the same code is trained on a general-purpose dialogue dataset:
+
+```
+bash run_dolly.sh        # prepare_dolly.py, then two configs (4x256 and 6x384, block 512), then sample replies
+python generate.py --chat --ckpt dolly_small_best.pt "What is the capital of France?"
+python export_weights.py --ckpt dolly_small_best.pt   # then commit web/model/ to update the web app
+```
+
+`prepare_dolly.py` downloads [Dolly 15k](https://huggingface.co/datasets/databricks/databricks-dolly-15k) (about 15,000 human-written instruction and response pairs by Databricks employees, licensed CC BY-SA 3.0) and writes `data/dolly_chat.txt`. It keeps only examples without a context passage, collapses whitespace so a blank line always ends a turn, keeps ASCII characters only, cuts long responses at a sentence end (400 characters at most), and shuffles with a fixed seed, so the sequential 80/10/10 split in `train.py` is not biased by dataset order. Results for these runs are not in this README yet.
+
 To deploy, import the repo into Vercel and set the **Root Directory** to `web`; `web/vercel.json` bundles the model files into the function. The weights (`web/model/`) must be committed first, since the checkpoints themselves (`*.pt`) are git-ignored.
 
 ## 9. Repository map
@@ -214,6 +227,7 @@ To deploy, import the repo into Vercel and set the **Root Directory** to `web`; 
 | `train.py` | model, training loop, early stopping, final train/val/test report |
 | `generate.py` | sample text from a saved checkpoint |
 | `run_experiments.sh`, `logs/`, `exp_*_results.json` | the three experiments and their results |
+| `prepare_dolly.py`, `run_dolly.sh` | build the Dolly 15k chat dataset and train the chat models |
 | `export_weights.py` | checkpoint to JavaScript-readable weights |
 | `web/` | React UI, Vercel function, JavaScript model, tests |
 | `generate_output*.txt` | full sample generations (initial run and final model) |
