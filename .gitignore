@@ -1,5 +1,8 @@
 __pycache__/
 *.pyc
-model.pt
-train_log.txt
+*.pt
+.venv/
+venv/
 .claude-flow/
+-p/
+train_log.txt
