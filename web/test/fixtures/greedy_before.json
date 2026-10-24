@@ -3,6 +3,14 @@
   "temperature": 0.8,
   "topK": 1,
   "seed": 1,
+  "model": {
+    "params": 10880640,
+    "layers": 6,
+    "width": 384,
+    "step": 4750,
+    "tokenizer": null,
+    "model_json_sha256": "a06a527b2c5f2c46"
+  },
   "cases": [
     {
       "prompt": "User:\nWhat is the capital of France?\n\nAssistant:\n",
