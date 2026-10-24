@@ -1,11 +1,13 @@
 """Load a trained checkpoint (default: best-val) and generate text from several prompts.
 
 Plain mode continues each prompt as raw text. --chat wraps each prompt as a User/Assistant exchange (the format
-prepare_dolly.py writes) and prints only the assistant's reply, which ends at the first blank line."""
+prepare_dolly.py writes) and prints only the assistant's reply, which ends at the first blank line. Works with
+character checkpoints and with BPE checkpoints (which carry their tokenizer inline)."""
 import argparse
 
 import torch
 
+from bpe import BPE
 from train import GPT, device
 
 PROMPTS = [
@@ -32,12 +34,16 @@ ap.add_argument("prompts", nargs="*")
 args = ap.parse_args()
 
 ckpt = torch.load(args.ckpt, map_location=device)
-chars = ckpt["chars"]
-stoi = {c: i for i, c in enumerate(chars)}
-encode = lambda s: [stoi[c] for c in s if c in stoi]  # characters outside the training vocabulary are dropped
-decode = lambda ids: "".join(chars[i] for i in ids)
+if ckpt.get("tokenizer"):  # BPE checkpoint: the tokenizer is stored inline
+    tok = BPE(ckpt["tokenizer"]["alphabet"], ckpt["tokenizer"]["merges"])
+    vocab, encode, decode = tok.vocab, tok.encode, tok.decode  # encode drops characters outside the alphabet
+else:  # character checkpoint
+    vocab = ckpt["chars"]
+    stoi = {c: i for i, c in enumerate(vocab)}
+    encode = lambda s: [stoi[c] for c in s if c in stoi]  # characters outside the training vocabulary are dropped
+    decode = lambda ids: "".join(vocab[i] for i in ids)
 
-model = GPT(ckpt["config"], len(chars)).to(device)
+model = GPT(ckpt["config"], len(vocab)).to(device)
 model.load_state_dict(ckpt["model"])
 model.eval()
 
@@ -46,6 +52,8 @@ torch.manual_seed(0)
 for p in prompts:
     framed = f"{USER}:\n{p}\n\n{BOT}:\n" if args.chat else p
     ids = encode(framed)
+    # every token is at least one character, so max_chars tokens always yield max_chars characters
     out = model.generate(torch.tensor([ids], device=device), args.max_chars)[0].tolist()
+    reply = decode(out[len(ids):])[: args.max_chars]
     print("=" * 60, f"\nPROMPT: {p!r}\n" + "-" * 60)
-    print(decode(out[len(ids):]).split("\n\n")[0] if args.chat else decode(out))
+    print(reply.split("\n\n")[0] if args.chat else decode(ids) + reply)

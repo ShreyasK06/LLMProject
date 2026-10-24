@@ -1,8 +1,12 @@
-"""Train a small character-level GPT from scratch (random init, no pretrained weights)
-on a text file (default TinyShakespeare; see prepare_dolly.py for chat data) using next-token prediction.
+"""Train a small GPT from scratch (random init, no pretrained weights) on a text file (default
+TinyShakespeare; see prepare_dolly.py for chat data) using next-token prediction. Tokens are characters by
+default, or BPE tokens with --tokenizer (see train_tokenizer.py).
 
-Data is split 80/10/10 (sequential) into train/val/test. Val drives checkpoint selection and
-early stopping; test loss is reported once, at the end, for the best-val checkpoint."""
+The raw text is cut 80/10/10 (sequential) at character offsets into train/val/test and each part is tokenized
+separately, so character and BPE runs use the same split points. Val drives checkpoint selection and early
+stopping; test loss is reported once, at the end, for the best-val checkpoint. Besides loss per token, bits per
+character (summed NLL / (characters covered by the target tokens * ln 2)) is reported so that runs with
+different tokenizers can be compared."""
 import argparse
 import json
 import math
@@ -11,6 +15,8 @@ import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from bpe import BPE
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -27,18 +33,33 @@ def default_config():
     return cfg
 
 
-splits = {}  # filled by load_data()
+splits = {}  # id tensors per split, filled by load_data()
+split_chars = {}  # raw characters per split, filled by load_data()
 
 
-def load_data(path):
-    """Read a text file, build the character vocabulary, fill `splits`, and return the vocabulary."""
+def tokenizer_dict(tok):
+    """Inline JSON form of a BPE tokenizer (same fields as BPE.save)."""
+    return {"version": 1, "alphabet": tok.alphabet, "merges": [list(m) for m in tok.merges], "vocab": tok.vocab}
+
+
+def load_data(path, tokenizer=None):
+    """Read a text file, cut it 80/10/10 at character offsets, tokenize each part separately and fill `splits`
+    and `split_chars`. `tokenizer` is None (character ids), a BPE instance or a path to a saved BPE.
+    Returns (vocab, tok_chars): the token strings and a LongTensor with the character length of each token."""
     text = open(path, encoding="utf-8").read()
-    chars = sorted(set(text))
-    stoi = {c: i for i, c in enumerate(chars)}
-    data = torch.tensor([stoi[c] for c in text], dtype=torch.long)
-    n_train, n_val = int(0.8 * len(data)), int(0.9 * len(data))
-    splits.update(train=data[:n_train], val=data[n_train:n_val], test=data[n_val:])
-    return chars
+    n_train, n_val = int(0.8 * len(text)), int(0.9 * len(text))
+    parts = dict(train=text[:n_train], val=text[n_train:n_val], test=text[n_val:])
+    if tokenizer is None:
+        vocab = sorted(set(text))
+        stoi = {c: i for i, c in enumerate(vocab)}
+        encode = lambda s: [stoi[c] for c in s]
+    else:
+        tok = BPE.load(tokenizer) if isinstance(tokenizer, str) else tokenizer
+        vocab, encode = tok.vocab, tok.encode
+    splits.update({k: torch.tensor(encode(v), dtype=torch.long) for k, v in parts.items()})
+    split_chars.update({k: len(v) for k, v in parts.items()})
+    tok_chars = torch.tensor([len(t) for t in vocab], dtype=torch.long)
+    return vocab, tok_chars
 
 
 def get_batch(split, block, batch):
@@ -118,21 +139,30 @@ class GPT(nn.Module):
 
 
 @torch.no_grad()
-def estimate_loss(model, cfg, which=("train", "val"), iters=None):
+def estimate_loss(model, cfg, which=("train", "val"), iters=None, tok_chars=None):
+    """Returns (loss, bpc): mean nats per token and bits per character for each split in `which`.
+    bpc = summed NLL / (characters covered by the target tokens * ln 2), where `tok_chars[id]` is the character
+    length of token `id` (None = one character per token)."""
     model.eval()
     iters = iters or cfg["eval_iters"]
-    out = {}
+    if tok_chars is not None:
+        tok_chars = tok_chars.to(device)
+    loss, bpc = {}, {}
     for s in which:
         if s == "train":  # random windows from the train split
-            out[s] = sum(model(*get_batch(s, cfg["block"], cfg["batch"]))[1].item() for _ in range(iters)) / iters
+            batches = (get_batch(s, cfg["block"], cfg["batch"]) for _ in range(iters))
         else:  # val/test: deterministic sweep over non-overlapping windows, so numbers are comparable across steps
-            tot = n = 0
-            for x, y in sweep_batches(s, cfg["block"], cfg["batch"]):
-                tot += model(x, y)[1].item() * len(x)
-                n += len(x)
-            out[s] = tot / n
+            batches = sweep_batches(s, cfg["block"], cfg["batch"])
+        nll = n_tok = n_chr = 0
+        for x, y in batches:
+            logits, _ = model(x)
+            nll += F.cross_entropy(logits.view(-1, logits.size(-1)), y.view(-1), reduction="sum").item()
+            n_tok += y.numel()
+            n_chr += y.numel() if tok_chars is None else tok_chars[y].sum().item()
+        loss[s] = nll / n_tok
+        bpc[s] = nll / (n_chr * math.log(2))
     model.train()
-    return out
+    return loss, bpc
 
 
 def lr_at(step, cfg):
@@ -142,10 +172,12 @@ def lr_at(step, cfg):
     return cfg["min_lr"] + 0.5 * (cfg["lr"] - cfg["min_lr"]) * (1 + math.cos(math.pi * p))
 
 
-def parse_args():
+def parse_args(argv=None):
     d = default_config()
-    ap = argparse.ArgumentParser(description="Train a char-level GPT from scratch on a text file.")
+    ap = argparse.ArgumentParser(description="Train a char-level or BPE GPT from scratch on a text file.")
     ap.add_argument("--data", default="data/input.txt", help="training text (default: TinyShakespeare)")
+    ap.add_argument("--tokenizer", default=None,
+                    help="BPE tokenizer JSON from train_tokenizer.py (default: character tokens)")
     for k in ("n_layer", "n_head", "n_embd", "block", "batch", "max_steps", "seed", "eval_every", "eval_iters"):
         ap.add_argument(f"--{k}", type=int, default=d[k])
     for k in ("dropout", "lr", "min_lr", "weight_decay"):
@@ -153,20 +185,22 @@ def parse_args():
     ap.add_argument("--patience", type=int, default=d["patience"],
                     help="stop after this many eval intervals without val improvement (0 = off)")
     ap.add_argument("--out", default="model", help="checkpoint prefix: <out>_best.pt, <out>_final.pt")
-    return ap.parse_args()
+    return ap.parse_args(argv)
 
 
-def main():
-    args = parse_args()
-    cfg = {**default_config(), **{k: v for k, v in vars(args).items() if k not in ("out", "data")}}
+def main(argv=None):
+    args = parse_args(argv)
+    cfg = {**default_config(), **{k: v for k, v in vars(args).items() if k not in ("out", "data", "tokenizer")}}
     assert cfg["n_embd"] % cfg["n_head"] == 0, "n_embd must be divisible by n_head"
     torch.manual_seed(cfg["seed"])
     out = args.out
-    chars = load_data(args.data)
-    vocab_size = len(chars)
+    tok = BPE.load(args.tokenizer) if args.tokenizer else None
+    vocab, tok_chars = load_data(args.data, tok)
+    vocab_size = len(vocab)
     model = GPT(cfg, vocab_size).to(device)
     n_params = sum(p.numel() for p in model.parameters())
-    print(f"device={device} data={args.data} chars={sum(len(s) for s in splits.values())} vocab={vocab_size} "
+    print(f"device={device} data={args.data} tokenizer={args.tokenizer or 'char'} "
+          f"chars={sum(split_chars.values())} tokens={sum(len(s) for s in splits.values())} vocab={vocab_size} "
           f"params={n_params / 1e6:.2f}M out={out}", flush=True)
     print("config:", json.dumps(cfg), flush=True)
     # decay only weight matrices; exempt biases, LayerNorm gains and the (tied) embeddings
@@ -177,12 +211,13 @@ def main():
                              {"params": nodecay, "weight_decay": 0.0}], lr=cfg["lr"], betas=(0.9, 0.95))
 
     def save(path, step):
-        torch.save({"model": model.state_dict(), "chars": chars, "config": cfg, "step": step}, path)
+        torch.save({"model": model.state_dict(), "chars": None if tok else vocab,
+                    "tokenizer": tokenizer_dict(tok) if tok else None, "config": cfg, "step": step}, path)
 
     best_val, best_step, bad, t0 = float("inf"), 0, 0, time.time()
     for step in range(cfg["max_steps"] + 1):
         if step % cfg["eval_every"] == 0 or step == cfg["max_steps"]:
-            l = estimate_loss(model, cfg)
+            l, _ = estimate_loss(model, cfg, tok_chars=tok_chars)
             tag = ""
             if l["val"] < best_val:
                 best_val, best_step, bad = l["val"], step, 0
@@ -210,15 +245,18 @@ def main():
     # report on the best-val checkpoint; test is touched only here, once
     model.load_state_dict(torch.load(f"{out}_best.pt", map_location=device)["model"])
     iters = max(200, cfg["eval_iters"])
-    r = estimate_loss(model, cfg, ("train", "val", "test"), iters)
+    r, bpc = estimate_loss(model, cfg, ("train", "val", "test"), iters, tok_chars=tok_chars)
     ppl = {k: math.exp(v) for k, v in r.items()}
     print(f"best checkpoint (step {best_step}) | train {r['train']:.4f} | val {r['val']:.4f} | test {r['test']:.4f}"
-          f" | ppl train {ppl['train']:.2f} val {ppl['val']:.2f} test {ppl['test']:.2f}")
+          f" | ppl train {ppl['train']:.2f} val {ppl['val']:.2f} test {ppl['test']:.2f}"
+          f" | bpc train {bpc['train']:.4f} val {bpc['val']:.4f} test {bpc['test']:.4f}")
     with open(f"{out}_results.json", "w") as f:
         json.dump({"data": args.data, "vocab_size": vocab_size, "config": cfg, "params": n_params,
                    "best_step": best_step, "last_step": step,
                    "train_loss": r["train"], "val_loss": r["val"], "test_loss": r["test"],
-                   "perplexity": ppl, "eval_iters": iters}, f, indent=2)
+                   "perplexity": ppl, "eval_iters": iters,
+                   "tokenizer": args.tokenizer or "char", "bits_per_char": bpc,
+                   "tokens": {k: len(v) for k, v in splits.items()}, "chars": dict(split_chars)}, f, indent=2)
     print(f"wrote {out}_results.json")
 
 
