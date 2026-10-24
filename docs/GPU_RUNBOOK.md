@@ -25,7 +25,7 @@ python -c "import torch; print(torch.cuda.is_available())"   # must print True
 bash run_bpe.sh
 ```
 
-On Windows, Git Bash works. If a script fails with `$'': command not found`, its line endings were converted to CRLF; fix with `sed -i 's/$//' run_bpe.sh`. `run_bpe.sh` does these steps in order:
+On Windows, Git Bash works. If a script fails with `$'\r': command not found`, its line endings were converted to CRLF; fix with `sed -i 's/\r$//' run_bpe.sh`. `run_bpe.sh` does these steps in order:
 
 1. If `data/dolly_chat.txt` is missing, runs `prepare_dolly.py` (downloads Dolly 15k).
 2. Trains the tokenizer (`train_tokenizer.py`, vocab 2000, first 80% of the text) and writes `tokenizer.json`.
