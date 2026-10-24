@@ -59,6 +59,7 @@ export class Tokenizer {
       this._merged.set(`${a},${b}`, base + r);
     });
     this._cache = new Map();
+    this.cacheMax = 50000; // pieces come from untrusted prompts, so the cache is cleared when it grows past this
   }
 
   _encodePiece(chars) {
@@ -91,6 +92,7 @@ export class Tokenizer {
       }
       seq = out;
     }
+    if (this._cache.size >= this.cacheMax) this._cache.clear();
     this._cache.set(key, seq);
     return seq;
   }

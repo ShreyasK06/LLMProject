@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import handler from "../api/generate.js";
 
+delete process.env.MODEL_DIR; // test the default lookup (web/model), whatever the shell has set
+
 function call(method, body, headers = {}) {
   const res = new EventEmitter();
   Object.assign(res, {

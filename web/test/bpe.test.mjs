@@ -29,4 +29,25 @@ assert.equal(tok.vocabSize, JSON.parse(readFileSync(here("./fixtures/tokenizer.j
 for (const id of [0, 1, tok.vocabSize - 1]) {
   assert.equal(tok.charLen(id), Array.from(tok.pieceOf(id)).length);
 }
+// The per-piece cache is bounded (prompts are untrusted); encoding more distinct pieces than the cap gives the same
+// ids as an uncapped tokenizer.
+{
+  const letters = [...inAlpha].filter((c) => /[a-z]/.test(c)), L = letters.length;
+  const words = [];
+  for (let i = 0; i < 60000; i++) {
+    let w = "";
+    for (let n = i; ; n = Math.floor(n / L)) { w += letters[n % L]; if (n < L) break; }
+    words.push(w); // distinct for distinct i, all in the tokenizer's alphabet
+  }
+  const big = words.join(" ");
+  const capped = loadTokenizer(here("./fixtures/tokenizer.json"));
+  const uncapped = loadTokenizer(here("./fixtures/tokenizer.json"));
+  uncapped.cacheMax = Infinity;
+  const a = capped.encode(big).ids;
+  assert.ok(uncapped._cache.size === 0 && capped._cache.size <= 50000, `cache size ${capped._cache.size}`);
+  const b = uncapped.encode(big).ids;
+  assert.ok(uncapped._cache.size > 50000);
+  assert.deepEqual(a, b);
+  assert.deepEqual(capped.encode(big).ids, b, "re-encoding after the cache was cleared");
+}
 console.log(`bpe tests passed (${cases.length} parity cases)`);

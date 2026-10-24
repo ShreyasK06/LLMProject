@@ -26,6 +26,9 @@ function readWeights(path, dtype) {
   return new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
 }
 
+// A tokenizer.json that is missing, unreadable, or does not fit the weights. The API caches these per model dir.
+export class TokenizerError extends Error {}
+
 // model.json written before BPE support has no `tokenizer`/`dtype` keys: that means a float32 character model.
 export function loadModel(dir) {
   const meta = JSON.parse(readFileSync(join(dir, "model.json"), "utf-8"));
@@ -37,9 +40,19 @@ export function loadModel(dir) {
   if (meta.tokenizer) {
     const path = join(dir, meta.tokenizer);
     if (!existsSync(path)) {
-      throw new Error(`Tokenizer file ${meta.tokenizer} (named in model.json) not found in ${dir}. Re-run export_weights.py.`);
+      throw new TokenizerError(`Tokenizer file ${meta.tokenizer} (named in model.json) not found in ${dir}. Re-run export_weights.py.`);
     }
-    tok = loadTokenizer(path);
+    try {
+      tok = loadTokenizer(path);
+    } catch (e) {
+      throw new TokenizerError(`Tokenizer file ${meta.tokenizer} in ${dir} invalid: ${e.message}. Re-run export_weights.py.`);
+    }
+    const rows = w["tok.weight"].length / n_embd;
+    if (tok.vocabSize !== rows) {
+      throw new TokenizerError(`Tokenizer file ${meta.tokenizer} in ${dir} invalid: its vocabulary has ${tok.vocabSize} ` +
+        `tokens but the weights have ${rows} embedding rows (tokenizer and weights are from different runs). ` +
+        "Re-run export_weights.py.");
+    }
   } else {
     chars = meta.chars;
     stoi = new Map(chars.map((c, i) => [c, i]));

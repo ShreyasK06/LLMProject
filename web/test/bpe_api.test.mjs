@@ -1,7 +1,7 @@
 // Calls the Vercel handler with mock req/res against the tiny random-init BPE fixture (tests/make_fixture_model.py).
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { cpSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -179,7 +179,48 @@ try {
   rmSync(tmp, { recursive: true, force: true });
 }
 
-// MODEL_DIR without weights -> 503 too
+// copy of the fixture model in a temp dir, with `edit(dir)` applied
+function withModelCopy(edit, fn) {
+  const dir = mkdtempSync(join(tmpdir(), "bpe-model-"));
+  cpSync(BPE_DIR, dir, { recursive: true });
+  edit(dir);
+  return Promise.resolve(fn(dir)).finally(() => rmSync(dir, { recursive: true, force: true }));
+}
+
+// unparseable tokenizer.json -> loadModel throws "Tokenizer file ... invalid: ...", and the handler's 503 carries it
+await withModelCopy((d) => writeFileSync(join(d, "tokenizer.json"), "{ not json"), async (dir) => {
+  assert.throws(() => loadModel(dir), /^Error: Tokenizer file tokenizer\.json .*invalid: /);
+  process.env.MODEL_DIR = dir;
+  const r = await call("GET");
+  assert.equal(r.statusCode, 503);
+  assert.match(JSON.parse(r.chunks.join("")).error, /^Tokenizer file tokenizer\.json .*invalid: /);
+  // The failure is cached for this MODEL_DIR: fixing the file does not trigger a reload of the weights.
+  cpSync(join(BPE_DIR, "tokenizer.json"), join(dir, "tokenizer.json"));
+  const again = await call("GET");
+  assert.equal(again.statusCode, 503, "a tokenizer failure is cached per MODEL_DIR");
+  assert.match(JSON.parse(again.chunks.join("")).error, /invalid: /);
+});
+
+// tokenizer.json whose vocabulary size differs from the embedding rows in weights.bin -> error naming the tokenizer
+await withModelCopy((d) => {
+  const t = JSON.parse(readFileSync(join(d, "tokenizer.json"), "utf8"));
+  t.merges = t.merges.slice(0, -5); t.vocab = t.vocab.slice(0, -5);
+  writeFileSync(join(d, "tokenizer.json"), JSON.stringify(t));
+}, async (dir) => {
+  assert.throws(() => loadModel(dir), (e) => /tokenizer/i.test(e.message) && /295/.test(e.message) && /300/.test(e.message));
+  process.env.MODEL_DIR = dir;
+  const r = await call("GET");
+  assert.equal(r.statusCode, 503);
+  assert.match(JSON.parse(r.chunks.join("")).error, /tokenizer/i);
+});
+
+// MODEL_DIR without weights -> 503 too, and that is NOT cached: once weights appear, the next request loads them
+await withModelCopy((d) => rmSync(join(d, "weights.bin")), async (dir) => {
+  process.env.MODEL_DIR = dir;
+  assert.equal((await call("GET")).statusCode, 503);
+  cpSync(join(BPE_DIR, "weights.bin"), join(dir, "weights.bin"));
+  assert.equal((await call("GET")).statusCode, 200, "a missing weights file is retried");
+});
 process.env.MODEL_DIR = join(tmpdir(), "no-such-model-dir");
 assert.equal((await call("GET")).statusCode, 503);
 

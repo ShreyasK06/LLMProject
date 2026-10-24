@@ -2,23 +2,33 @@
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { encode, generate, loadModel } from "../lib/gpt.js";
+import { encode, generate, loadModel, TokenizerError } from "../lib/gpt.js";
 
 const MAX_PROMPT = 4000;
 const clamp = (v, lo, hi, d) => (Number.isFinite(+v) ? Math.min(hi, Math.max(lo, +v)) : d);
 
 // MODEL_DIR (if set) is the only directory searched; the cache is keyed on it so a changed value takes effect.
+// A tokenizer failure (bad or mismatched tokenizer.json) is also cached per MODEL_DIR for the process lifetime, so
+// each request does not re-read the weights; missing weights are not cached, so a later request retries.
 let cached = null, cachedKey = null;
+const failed = new Map();
 function getModel() {
   const key = process.env.MODEL_DIR || "";
   if (cached && cachedKey === key) return cached;
+  if (failed.has(key)) throw failed.get(key);
   const here = dirname(fileURLToPath(import.meta.url));
   const dirs = key ? [resolve(key)] : [join(here, "..", "model"), join(process.cwd(), "model")];
   const dir = dirs.find((d) => existsSync(join(d, "weights.bin")));
   if (!dir) {
     throw new Error(`Model weights not found${key ? ` in MODEL_DIR (${key})` : ""}. Run \`python export_weights.py --ckpt <checkpoint>\` and redeploy.`);
   }
-  const model = loadModel(dir);
+  let model;
+  try {
+    model = loadModel(dir);
+  } catch (e) {
+    if (e instanceof TokenizerError) failed.set(key, e);
+    throw e;
+  }
   model.nParams = Object.values(model.w).reduce((n, t) => n + t.length, 0);
   cached = model; cachedKey = key;
   return cached;
