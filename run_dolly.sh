@@ -4,7 +4,24 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 mkdir -p logs results
-PY=${PYTHON:-$(command -v python3 || command -v python)}
+# Python: $PYTHON if set, else the active venv's interpreter, else python3 (or python when python3 is missing or is
+# the Windows Store stub in WindowsApps).
+pick_python() {
+  if [ -n "${PYTHON:-}" ]; then echo "$PYTHON"; return; fi
+  if [ -n "${VIRTUAL_ENV:-}" ]; then
+    for p in "$VIRTUAL_ENV/Scripts/python.exe" "$VIRTUAL_ENV/Scripts/python" "$VIRTUAL_ENV/bin/python"; do
+      if [ -x "$p" ]; then echo "$p"; return; fi
+    done
+  fi
+  local p3
+  p3=$(command -v python3 || true)
+  case "$p3" in
+    "" | */WindowsApps/*) command -v python || echo "$p3" ;;
+    *) echo "$p3" ;;
+  esac
+}
+PY=$(pick_python)
+[ -n "$PY" ] || { echo "no python found; set PYTHON=/path/to/python" >&2; exit 1; }
 
 [ -f data/dolly_chat.txt ] || "$PY" prepare_dolly.py
 

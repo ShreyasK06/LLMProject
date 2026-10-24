@@ -4,16 +4,18 @@ This trains two small BPE chat models (`bpe_small`, `bpe_tiny`) with three seeds
 
 ## 1. Set up
 
+These steps clone from GitHub, so they assume the `bpe-polish` branch has been pushed (or already merged into the default branch). Until then, copy the repo folder to the GPU machine instead (a zip or `scp`, no git needed; `.pt` files and `data/dolly_chat.txt` can be left out) and start at `python -m venv .venv`.
+
 ```bash
 git clone https://github.com/ShreyasK06/LLMProject.git LLMProject
 cd LLMProject
-git checkout bpe-polish        # or main, once bpe-polish has been merged
+git checkout bpe-polish        # if the branch was pushed but not merged; skip this line once it is merged
 python -m venv .venv
 source .venv/bin/activate      # Windows Git Bash: source .venv/Scripts/activate ; PowerShell: .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-dev.txt   # requirements-dev.txt adds pytest, for python -m pytest tests
 ```
 
-`requirements.txt` only lists `torch>=2.0`, which on many machines installs a CPU-only wheel. Installing the torch wheel that matches your CUDA driver (see pytorch.org "Get Started") is your responsibility. Check it before starting:
+`requirements.txt` lists `torch>=2.0` and `numpy`; on many machines that installs a CPU-only torch wheel. Installing the torch wheel that matches your CUDA driver (see pytorch.org "Get Started") is your responsibility. Check it before starting:
 
 ```bash
 python -c "import torch; print(torch.cuda.is_available())"   # must print True
@@ -25,10 +27,10 @@ python -c "import torch; print(torch.cuda.is_available())"   # must print True
 bash run_bpe.sh
 ```
 
-On Windows, Git Bash works. If a script fails with `$'\r': command not found`, its line endings were converted to CRLF; fix with `sed -i 's/\r$//' run_bpe.sh`. `run_bpe.sh` does these steps in order:
+On Windows, Git Bash works. The script uses `$PYTHON` if set, else the active venv's interpreter, else `python3` or `python`; if it picks the wrong one, `PYTHON=python bash run_bpe.sh` works. If a script fails with `$'\r': command not found`, its line endings were converted to CRLF; fix with `sed -i 's/\r$//' run_bpe.sh`. `run_bpe.sh` does these steps in order:
 
 1. If `data/dolly_chat.txt` is missing, runs `prepare_dolly.py` (downloads Dolly 15k).
-2. Trains the tokenizer (`train_tokenizer.py`, vocab 2000, first 80% of the text) and writes `tokenizer.json`.
+2. Trains the tokenizer (`train_tokenizer.py`, vocab 2000, first 80% of the text) and writes `tokenizer.json`. **This step can take 10 to 20 minutes on the real data** (an estimate from timing synthetic text, not measured on Dolly) and uses only the CPU. It prints `merges N/total` every 100 merges and the elapsed seconds at the end, so it is not stuck.
 3. For each seed, trains `bpe_small_s<seed>` (4 layers, 4 heads, width 192, block 256, dropout 0.3) and `bpe_tiny_s<seed>` (3 layers, 3 heads, width 192, block 256, dropout 0.4), both with batch 64, patience 4, 5000 max steps (early stopping on validation loss).
 4. Generates sample replies from each best checkpoint.
 
@@ -82,3 +84,14 @@ Quick table of validation bits per character:
 ```bash
 python -c "import json,glob; [print(f, json.load(open(f))['bits_per_char']['val']) for f in sorted(glob.glob('results/bpe_*_results.json'))]"
 ```
+
+## 6. Check the JavaScript tokenizer before deploying
+
+Before swapping the BPE model into `web/model`, check that the JavaScript port encodes the real `tokenizer.json` exactly like Python (needs Node and `data/dolly_chat.txt`; run `python prepare_dolly.py` first if it is missing):
+
+```bash
+python tests/make_real_parity.py --tokenizer tokenizer.json --text data/dolly_chat.txt --out parity.json
+node web/test/check_real_parity.mjs tokenizer.json parity.json   # must print "JS matches Python" and exit 0
+```
+
+After export, the server also refuses a `tokenizer.json` whose vocabulary size does not match the weights.

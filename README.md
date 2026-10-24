@@ -30,7 +30,7 @@ token ids -> token embedding (vocab x d) + learned position embedding (block x d
 - **KV cache (JavaScript inference):** past keys and values are kept, so each new token costs one single-position pass. Past `block` tokens the oldest half is dropped and the rest re-read.
 - **Sampling:** temperature divides the logits (default 0.8); top-k keeps the k most likely tokens (default 40).
 
-**Training** (`train.py`, PyTorch): AdamW, learning rate 1e-3 with 100 warmup steps and cosine decay to 1e-4, gradient clipping at 1.0, weight decay on weight matrices only, dropout, evaluation every 250 steps. The best-validation checkpoint is kept, the run scripts stop after 4 evaluations without improvement, and test is measured once, on the best checkpoint.
+**Training** (`train.py`, PyTorch): AdamW, learning rate 1e-3 with 100 warmup steps and cosine decay to 1e-4, gradient clipping at 1.0, weight decay on the attention and MLP weight matrices only (biases, LayerNorm gains and the token and position embeddings, which the tied head shares, are exempt), dropout, evaluation every 250 steps. The best-validation checkpoint is kept, the run scripts stop after 4 evaluations without improvement, and test is measured once, on the best checkpoint.
 
 ## Tokenizer: characters, then BPE
 
@@ -47,6 +47,8 @@ token ids -> token embedding (vocab x d) + learned position embedding (block x d
 | `dolly_small`, characters | 3.31M | 1.619 | 1.716 | 1.709 |
 | `dolly_large`, characters (deployed) | 10.88M | 1.288 | 1.536 | 1.530 |
 | BPE (`run_bpe.sh`, 2 configs × 3 seeds) | TODO(phase2) | TODO(phase2) | TODO(phase2) | TODO(phase2) |
+
+For the character models, Train is an estimate over 200 random training batches; Val and Test are full sweeps.
 
 The BPE models have not been trained yet; they need a GPU ([docs/GPU_RUNBOOK.md](docs/GPU_RUNBOOK.md)). The selection rule is fixed in advance: lowest validation bits per character, with test reported once.
 
@@ -94,7 +96,7 @@ All numbers come from `results/*_results.json` and are measured on the best-vali
 | Before (`web/lib/gpt.js` at commit `eca0611`, [results/bench_before.json](results/bench_before.json)) | 48.72 | 750.49 ms |
 | After (current `web/lib/gpt.js`, [results/bench_after.json](results/bench_after.json)) | 79.94 | 448.91 ms |
 
-Measured back to back on one laptop (11th Gen Intel Core i5-1135G7, 8 logical cores, Windows x64, Node v22.18.0); the numbers are specific to that machine and the Vercel server will differ. The gap covers every change this branch made to `web/lib/gpt.js`, both the decoding-loop restructuring and the BPE plumbing, not the loop changes alone. `web/test/speed_parity.test.mjs` checks that the new code gives the same greedy outputs as the old.
+Measured back to back on one laptop (11th Gen Intel Core i5-1135G7, 8 logical cores, Windows x64, Node v22.18.0); the numbers are specific to that machine and the Vercel server will differ. The gap covers every change this branch made to `web/lib/gpt.js`, both the decoding-loop restructuring and the BPE plumbing, not the loop changes alone. `web/test/speed_parity.test.mjs` checks that the new code gives the same greedy outputs as the old (it skips itself, exit 0, if `web/model` is not the model its fixture came from).
 
 ## How to run
 
@@ -105,7 +107,8 @@ pip install -r requirements.txt   # install a CUDA build of torch for GPU traini
 bash run_experiments.sh            # Shakespeare: three configs, logs in logs/, results in results/
 bash run_dolly.sh                  # Dolly: download, two configs, sample replies into results/
 python generate.py --chat --ckpt dolly_large_best.pt "What is the capital of France?"
-python -m pytest tests -v          # tokenizer, training smoke tests, export, doc links
+pip install -r requirements.txt -r requirements-dev.txt   # adds pytest
+python -m pytest tests -v          # tokenizer, JS/Python parity, training smoke tests, export, doc links
 ```
 
 `train.py --out NAME` writes `NAME_best.pt` and `NAME_final.pt` (git-ignored) and `results/NAME_results.json` (`--results_dir` changes the folder); `--tokenizer tokenizer.json` trains on BPE tokens.
