@@ -8,7 +8,7 @@
     "dev:ui": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node test/api.test.mjs && node test/ui.test.mjs"
+    "test": "node test/bpe.test.mjs && node test/api.test.mjs && node test/ui.test.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",
