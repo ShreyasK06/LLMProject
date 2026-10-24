@@ -66,6 +66,33 @@ def test_fp16(tmp_path):
     assert a.shape == b.shape and np.abs(a - b).max() < 1e-2
 
 
+def _ckpt_with(path, name, value):
+    bpe_ckpt(path)
+    ck = torch.load(path, map_location="cpu")
+    ck["model"][name] = ck["model"][name].clone()
+    ck["model"][name].view(-1)[3] = value
+    torch.save(ck, path)
+
+
+def test_fp16_refuses_out_of_range(tmp_path):
+    import pytest
+    for i, value in enumerate([70000.0, -1e6, float("nan"), float("inf")]):
+        ck = tmp_path / f"m{i}.pt"
+        _ckpt_with(ck, "blocks.0.mlp.0.weight", value)
+        with pytest.raises(ValueError, match=r"blocks\.0\.mlp\.0\.weight.*float16"):
+            run(ck, tmp_path / f"o{i}", "--fp16")
+        assert not (tmp_path / f"o{i}" / "weights.bin").exists()
+        # float32 export of the same checkpoint is unchanged
+        meta = run(ck, tmp_path / f"f{i}")
+        assert meta["dtype"] == "float32"
+
+
+def test_fp16_allows_max_half(tmp_path):
+    ck = tmp_path / "m.pt"
+    _ckpt_with(ck, "tok.weight", 65504.0)
+    assert run(ck, tmp_path / "o", "--fp16")["dtype"] == "float16"
+
+
 def test_char_export(tmp_path):
     char_ckpt(tmp_path / "c.pt")
     meta = run(tmp_path / "c.pt", tmp_path / "o")

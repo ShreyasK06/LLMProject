@@ -9,7 +9,10 @@ import argparse
 import json
 from pathlib import Path
 
+import numpy as np
 import torch
+
+FP16_MAX = 65504.0  # largest finite float16; --fp16 refuses tensors outside +-FP16_MAX or with NaN/inf
 
 
 def main(argv=None):
@@ -29,7 +32,12 @@ def main(argv=None):
     for name, t in ckpt["model"].items():
         if name == "head.weight":  # tied to tok.weight
             continue
-        a = t.detach().float().contiguous().numpy().astype(np_dtype)
+        f = t.detach().float().contiguous().numpy()
+        if args.fp16 and f.size and not (np.isfinite(f).all() and np.abs(f).max() <= FP16_MAX):
+            bad = "non-finite values" if not np.isfinite(f).all() else f"absolute max {np.abs(f).max():g}"
+            raise ValueError(f"Tensor {name} cannot be stored as float16: it has {bad} (float16 range is "
+                             f"+-{FP16_MAX:g}). Export without --fp16.")
+        a = f.astype(np_dtype)
         tensors.append({"name": name, "shape": list(a.shape), "offset": offset, "length": a.size})
         chunks.append(a.tobytes())
         offset += a.size
