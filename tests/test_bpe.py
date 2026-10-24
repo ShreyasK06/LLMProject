@@ -92,6 +92,45 @@ def test_compression(tok):
     assert len(tok.encode(text)) / len(text) < 0.5
 
 
+def _random_words(n=4000, seed=0):
+    import random
+    rng = random.Random(seed)
+    words = ["".join(rng.choice("abcdefghijklmnopqrstuvwxyz") for _ in range(rng.randint(2, 9))) for _ in range(n)]
+    return " ".join(words) + "\n"
+
+
+def test_train_progress_callback():
+    text = _random_words()
+    plain = BPE.train(text, 450)
+    total = 450 - len(plain.alphabet)
+    assert len(plain.merges) == total  # enough distinct pairs to reach the target (no early stop)
+    calls = []
+    with_cb = BPE.train(text, 450, progress=lambda done, total: calls.append((done, total)))
+    assert calls == [(d, total) for d in range(100, total + 1, 100)]
+    assert len(calls) == total // 100 == 4
+    assert with_cb.merges == plain.merges and with_cb.vocab == plain.vocab
+
+
+def test_train_progress_early_stop():
+    calls = []
+    t = BPE.train(TRAIN_TEXT, 300, progress=lambda done, total: calls.append((done, total)))
+    assert len(t.merges) < 300 - len(t.alphabet)  # this text runs out of pairs first
+    assert calls == [(d, 300 - len(t.alphabet)) for d in range(100, len(t.merges) + 1, 100)]
+
+
+def test_train_tokenizer_prints_progress(tmp_path, capsys):
+    import train_tokenizer
+    text = _random_words()
+    data = tmp_path / "d.txt"
+    data.write_text(text, encoding="utf-8")
+    out = tmp_path / "t.json"
+    train_tokenizer.main(["--data", str(data), "--vocab_size", "300", "--out", str(out)])
+    printed = capsys.readouterr().out
+    assert "merges 100/" in printed and "merges 200/" in printed
+    assert "elapsed" in printed
+    assert BPE.load(out).merges == BPE.train(text[: int(len(text) * 0.8)], 300).merges
+
+
 def test_writes_parity_fixture(tok):
     cases = [
         "",

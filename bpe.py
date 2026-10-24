@@ -77,8 +77,13 @@ class BPE:
         self._cache = {}
 
     @classmethod
-    def train(cls, text, vocab_size):
+    def train(cls, text, vocab_size, progress=None):
+        """Learn merges until the vocabulary has vocab_size entries (or no pair is left).
+
+        progress, if given, is called as progress(merges_done, merges_total) after every 100th merge.
+        """
         alphabet = sorted(set(text))
+        merges_total = max(0, vocab_size - len(alphabet))
         char_id = {c: i for i, c in enumerate(alphabet)}
         words = Counter(pretokenize(text))
         seqs = [[char_id[c] for c in w] for w in words]
@@ -108,6 +113,8 @@ class BPE:
                         i += 1
                 seq[:] = out
             next_id += 1
+            if progress is not None and len(merges) % 100 == 0:
+                progress(len(merges), merges_total)
         return cls(alphabet, merges)
 
     def _encode_piece(self, piece):
