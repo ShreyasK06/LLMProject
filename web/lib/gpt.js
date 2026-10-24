@@ -59,7 +59,7 @@ function erf(x) {
   return s * y;
 }
 
-// out[o] = b[o] + sum_i W[o*in + i] * x[i]. Four output rows per pass share each x[i] load; every row still sums in
+// out[o] = b[o] + sum_i W[o*in + i] * x[i]. Eight output rows per pass share each x[i] load; every row still sums in
 // the same order, so the result is bit-identical to the one-row loop.
 function linear(x, W, b, outDim, inDim, out) {
   let o = 0;
@@ -139,8 +139,8 @@ export class Session {
         const acc = this.acc;
         acc.fill(0);
         for (let t = 0; t <= pos; t++) {
-          const p = sc[t], base = t * E + o;
-          for (let i = 0; i < hd; i++) acc[i] += p * V[base + i];
+          const wt = sc[t], base = t * E + o;
+          for (let i = 0; i < hd; i++) acc[i] += wt * V[base + i];
         }
         for (let i = 0; i < hd; i++) this.att[o + i] = acc[i] / sum;
       }
