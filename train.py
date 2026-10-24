@@ -35,6 +35,7 @@ def default_config():
 
 splits = {}  # id tensors per split, filled by load_data()
 split_chars = {}  # raw characters per split, filled by load_data()
+split_unknown = {}  # raw characters per split outside the tokenizer's alphabet (dropped by encode), filled by load_data()
 
 
 def tokenizer_dict(tok):
@@ -53,11 +54,14 @@ def load_data(path, tokenizer=None):
         vocab = sorted(set(text))
         stoi = {c: i for i, c in enumerate(vocab)}
         encode = lambda s: [stoi[c] for c in s]
+        unknown = {k: 0 for k in parts}
     else:
         tok = BPE.load(tokenizer) if isinstance(tokenizer, str) else tokenizer
         vocab, encode = tok.vocab, tok.encode
+        unknown = {k: tok.unknown_chars(v) for k, v in parts.items()}
     splits.update({k: torch.tensor(encode(v), dtype=torch.long) for k, v in parts.items()})
     split_chars.update({k: len(v) for k, v in parts.items()})
+    split_unknown.update(unknown)
     tok_chars = torch.tensor([len(t) for t in vocab], dtype=torch.long)
     return vocab, tok_chars
 
@@ -256,7 +260,8 @@ def main(argv=None):
                    "train_loss": r["train"], "val_loss": r["val"], "test_loss": r["test"],
                    "perplexity": ppl, "eval_iters": iters,
                    "tokenizer": args.tokenizer or "char", "bits_per_char": bpc,
-                   "tokens": {k: len(v) for k, v in splits.items()}, "chars": dict(split_chars)}, f, indent=2)
+                   "tokens": {k: len(v) for k, v in splits.items()}, "chars": dict(split_chars),
+                   "unknown_chars": dict(split_unknown)}, f, indent=2)
     print(f"wrote {out}_results.json")
 
 

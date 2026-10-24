@@ -139,3 +139,20 @@ def test_bpe_bpc_matches_brute_force(data_file, tok_file):
         assert loss[s] == pytest.approx(nll / n_tok, rel=1e-4)
         assert bpc[s] == pytest.approx(nll / (n_chr * math.log(2)), rel=1e-4)
         assert n_chr > n_tok  # BPE tokens cover more than one character on average
+
+
+def test_unknown_chars_reported(tmp_path):
+    text = make_text(4000)
+    cut = int(0.8 * len(text))
+    pos = int(0.9 * len(text)) + 1  # inside the test split
+    text = text[:pos] + "é" + text[pos + 1 :]  # a character that appears only in the last 20%
+    data_file = tmp_path / "unk.txt"
+    data_file.write_text(text, encoding="utf-8")
+    tok_file = tmp_path / "unk_tok.json"
+    BPE.train(text[:cut], 300).save(str(tok_file))
+    r = run(tmp_path, data_file, "u", ["--tokenizer", str(tok_file)])
+    assert set(r["unknown_chars"]) == {"train", "val", "test"}
+    assert r["unknown_chars"]["train"] == 0
+    assert r["unknown_chars"]["test"] >= 1
+    rc = run(tmp_path, data_file, "uc")
+    assert rc["unknown_chars"] == {"train": 0, "val": 0, "test": 0}
