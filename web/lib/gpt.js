@@ -1,19 +1,52 @@
-// Pure-JS inference for the char-level GPT (mirrors train.py: pre-LN blocks, causal attention, GELU MLP, tied head).
-// Decoding uses a KV cache. Past `block` tokens the oldest half is dropped and the rest re-prefilled, so positions
-// stay within the range the model was trained on (this differs from Python's sliding window beyond `block` only).
-import { readFileSync } from "node:fs";
+// Pure-JS inference for the GPT (mirrors train.py: pre-LN blocks, causal attention, GELU MLP, tied head), with either
+// a character vocabulary or a BPE tokenizer. Decoding uses a KV cache. Past `block` tokens the oldest half is dropped
+// and the rest re-prefilled, so positions stay within the range the model was trained on (this differs from Python's
+// sliding window beyond `block` only).
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { loadTokenizer } from "./bpe.js";
 
+// IEEE 754 half precision (as a uint16 bit pattern) -> number.
+export function halfToFloat(h) {
+  const sign = h & 0x8000 ? -1 : 1, exp = (h >> 10) & 0x1f, frac = h & 0x3ff;
+  if (exp === 0) return sign * frac * 2 ** -24; // zero / subnormal
+  if (exp === 0x1f) return frac ? NaN : sign * Infinity;
+  return sign * (1 + frac / 1024) * 2 ** (exp - 15);
+}
+
+function readWeights(path, dtype) {
+  const buf = readFileSync(path);
+  if (dtype === "float16") {
+    const half = new Uint16Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)); // little-endian hosts
+    const out = new Float32Array(half.length);
+    for (let i = 0; i < half.length; i++) out[i] = halfToFloat(half[i]);
+    return out;
+  }
+  if (dtype !== "float32") throw new Error(`Unsupported weight dtype ${JSON.stringify(dtype)} in model.json.`);
+  return new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
+}
+
+// model.json written before BPE support has no `tokenizer`/`dtype` keys: that means a float32 character model.
 export function loadModel(dir) {
-  const meta = JSON.parse(readFileSync(`${dir}/model.json`, "utf-8"));
-  const buf = readFileSync(`${dir}/weights.bin`);
-  const all = new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
+  const meta = JSON.parse(readFileSync(join(dir, "model.json"), "utf-8"));
+  const all = readWeights(join(dir, "weights.bin"), meta.dtype ?? "float32");
   const w = {};
   for (const t of meta.tensors) w[t.name] = all.subarray(t.offset, t.offset + t.length);
   const { block, n_layer, n_head, n_embd } = meta.config;
-  const chars = meta.chars;
+  let tok = null, chars = null, stoi = null;
+  if (meta.tokenizer) {
+    const path = join(dir, meta.tokenizer);
+    if (!existsSync(path)) {
+      throw new Error(`Tokenizer file ${meta.tokenizer} (named in model.json) not found in ${dir}. Re-run export_weights.py.`);
+    }
+    tok = loadTokenizer(path);
+  } else {
+    chars = meta.chars;
+    stoi = new Map(chars.map((c, i) => [c, i]));
+  }
   return {
-    block, nLayer: n_layer, nHead: n_head, nEmbd: n_embd, chars, step: meta.step, w,
-    stoi: new Map(chars.map((c, i) => [c, i])),
+    block, nLayer: n_layer, nHead: n_head, nEmbd: n_embd, chars, stoi, tok, step: meta.step, w,
+    vocabSize: tok ? tok.vocabSize : chars.length,
   };
 }
 
@@ -64,7 +97,7 @@ export class Session {
 
   // Feed one token at position this.len; returns logits over the vocab.
   step(tok) {
-    const { w, nLayer, nHead, nEmbd: E, chars } = this.m;
+    const { w, nLayer, nHead, nEmbd: E, vocabSize } = this.m;
     const hd = E / nHead, pos = this.len, x = this.x, h = this.h;
     const te = w["tok.weight"], pe = w["pos.weight"];
     for (let i = 0; i < E; i++) x[i] = te[tok * E + i] + pe[pos * E + i];
@@ -101,7 +134,7 @@ export class Session {
       for (let i = 0; i < E; i++) x[i] += this.proj[i];
     }
     layerNorm(x, w["ln_f.weight"], w["ln_f.bias"], h);
-    const V_ = chars.length, logits = new Float32Array(V_);
+    const V_ = vocabSize, logits = new Float32Array(V_);
     linear(h, te, null, V_, E, logits); // tied head
     this.len++;
     this.tokens.push(tok);
@@ -142,19 +175,29 @@ export function sample(logits, temperature, topK, rand) {
   return idx[k - 1];
 }
 
-// Yields generated characters. `prompt` is any string; unknown characters are dropped by the caller via encode().
+// Yields the decoded text of each sampled token (one character for a character model). The total yielded text is
+// exactly `maxChars` characters (code points): the last token's text is cut to fit. `ids` come from encode().
 export function* generate(model, ids, { maxChars = 300, temperature = 0.8, topK = 40, seed } = {}) {
   const rand = mulberry32(seed ?? Math.floor(Math.random() * 2 ** 31));
   const s = new Session(model);
   let logits = s.prefill(ids.slice(-model.block));
-  for (let i = 0; i < maxChars; i++) {
+  for (let n = 0; n < maxChars;) {
     const t = sample(logits, temperature, topK, rand);
-    yield model.chars[t];
+    const piece = model.tok ? model.tok.pieceOf(t) : model.chars[t];
+    const cps = Array.from(piece);
+    if (n + cps.length >= maxChars) {
+      yield cps.slice(0, maxChars - n).join("");
+      return;
+    }
+    yield piece;
+    n += cps.length;
     logits = s.push(t);
   }
 }
 
+// Prompt text -> token ids; characters outside the vocabulary are dropped and counted.
 export function encode(model, text) {
+  if (model.tok) return model.tok.encode(text);
   const ids = [];
   let dropped = 0;
   for (const c of text) { const i = model.stoi.get(c); if (i === undefined) dropped++; else ids.push(i); }

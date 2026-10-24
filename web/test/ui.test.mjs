@@ -15,9 +15,10 @@ dom.window.HTMLElement.prototype.scrollIntoView = () => {};
 
 const enc = new TextEncoder();
 const bodies = [];
+let status = { ready: true, params: 818048, step: 20, block: 128, layers: 4, vocab: 65 };
 globalThis.fetch = async (url, opts = {}) => {
   if (!opts.method || opts.method === "GET") {
-    return { ok: true, json: async () => ({ ready: true, params: 818048, step: 20, block: 128, layers: 4, vocab: 65 }) };
+    return { ok: true, json: async () => status };
   }
   bodies.push(JSON.parse(opts.body));
   const chunks = ["Hello ", "there"].map((c) => enc.encode(c));
@@ -102,7 +103,20 @@ await act(async () => document.querySelector('button[aria-label^="Switch to"]').
 assert.equal(document.documentElement.dataset.theme, "dark");
 assert.equal(dom.window.localStorage.getItem("theme"), "dark");
 
-console.log("ui tests passed");
+assert.match(document.body.textContent, /65-character vocabulary/);
+assert.equal(document.getElementById("topk").max, "65", "top-k slider max is the vocabulary size");
+
+// a BPE model reports its token vocabulary
 await act(async () => root.unmount());
+status = { ...status, vocab: 2048, tokenizer: "bpe" };
+const root2 = createRoot(document.getElementById("root"));
+await act(async () => root2.render(React.createElement(App)));
+await flush();
+assert.match(document.body.textContent, /2048-token BPE vocabulary/);
+assert.doesNotMatch(document.body.textContent, /character vocabulary/);
+assert.equal(document.getElementById("topk").max, "2048");
+
+console.log("ui tests passed");
+await act(async () => root2.unmount());
 await vite.close();
 process.exit(0);

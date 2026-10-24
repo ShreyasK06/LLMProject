@@ -408,7 +408,8 @@ export default function App() {
 
         {ready && (
           <p className="meta mono">
-            {status.layers} layers · context {status.block} · {status.vocab}-character vocabulary
+            {status.layers} layers · context {status.block} ·{" "}
+            {status.tokenizer === "bpe" ? `${status.vocab}-token BPE vocabulary` : `${status.vocab}-character vocabulary`}
             {status.step != null && ` · checkpoint step ${status.step}`}
           </p>
         )}

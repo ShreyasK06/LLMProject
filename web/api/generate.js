@@ -1,20 +1,26 @@
-// Vercel serverless function (Node runtime). POST streams generated characters as text/plain; GET reports model status.
+// Vercel serverless function (Node runtime). POST streams generated text as text/plain; GET reports model status.
 import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { encode, generate, loadModel } from "../lib/gpt.js";
 
 const MAX_PROMPT = 4000;
 const clamp = (v, lo, hi, d) => (Number.isFinite(+v) ? Math.min(hi, Math.max(lo, +v)) : d);
 
-let cached = null;
+// MODEL_DIR (if set) is the only directory searched; the cache is keyed on it so a changed value takes effect.
+let cached = null, cachedKey = null;
 function getModel() {
-  if (cached) return cached;
+  const key = process.env.MODEL_DIR || "";
+  if (cached && cachedKey === key) return cached;
   const here = dirname(fileURLToPath(import.meta.url));
-  const dir = [join(here, "..", "model"), join(process.cwd(), "model")].find((d) => existsSync(join(d, "weights.bin")));
-  if (!dir) throw new Error("Model weights not found. Run `python export_weights.py --ckpt <checkpoint>` and redeploy.");
-  cached = loadModel(dir);
-  cached.nParams = Object.values(cached.w).reduce((n, t) => n + t.length, 0);
+  const dirs = key ? [resolve(key)] : [join(here, "..", "model"), join(process.cwd(), "model")];
+  const dir = dirs.find((d) => existsSync(join(d, "weights.bin")));
+  if (!dir) {
+    throw new Error(`Model weights not found${key ? ` in MODEL_DIR (${key})` : ""}. Run \`python export_weights.py --ckpt <checkpoint>\` and redeploy.`);
+  }
+  const model = loadModel(dir);
+  model.nParams = Object.values(model.w).reduce((n, t) => n + t.length, 0);
+  cached = model; cachedKey = key;
   return cached;
 }
 
@@ -56,7 +62,7 @@ export default async function handler(req, res) {
   if (req.method === "GET") {
     return sendJson(res, 200, {
       ready: true, params: model.nParams, step: model.step, block: model.block,
-      layers: model.nLayer, vocab: model.chars.length,
+      layers: model.nLayer, vocab: model.vocabSize, tokenizer: model.tok ? "bpe" : "char",
     });
   }
   if (req.method !== "POST") {
@@ -79,7 +85,7 @@ export default async function handler(req, res) {
   const opts = {
     maxChars: Math.round(clamp(body.maxChars, 1, 1000, 300)),
     temperature: clamp(body.temperature, 0.1, 1.5, 0.8),
-    topK: Math.round(clamp(body.topK, 1, model.chars.length, 40)),
+    topK: Math.round(clamp(body.topK, 1, model.vocabSize, 40)),
     seed: Number.isInteger(body.seed) ? body.seed : undefined,
   };
 
@@ -89,18 +95,23 @@ export default async function handler(req, res) {
   res.setHeader("X-Accel-Buffering", "no");
   res.setHeader("X-Dropped-Chars", String(dropped));
 
-  // Optional stop strings end the reply early (e.g. "\n\n" = end of a speech). Output that could still turn into a stop
-  // string is held back, so the stop string itself is never sent.
+  // Optional stop strings end the reply early (e.g. "\n\n" = end of a speech). They are matched on the decoded text,
+  // so they may span tokens, and one token's text may contain (part of) one. Output that could still turn into a stop
+  // string is held back, so the stop string itself is never sent; text before the first match always is.
   const stops = Array.isArray(body.stop) ? body.stop.filter((s) => typeof s === "string" && s).slice(0, 4) : [];
   const couldStart = (s) => stops.some((t) => t.startsWith(s));
 
   let closed = false;
   res.on("close", () => { closed = true; });
   let held = "";
-  for (const ch of generate(model, ids, opts)) {
+  for (const piece of generate(model, ids, opts)) {
     if (closed) return;
-    held += ch;
-    if (stops.some((t) => held.endsWith(t))) return res.end();
+    held += piece;
+    const at = Math.min(...stops.map((t) => held.indexOf(t)).filter((i) => i >= 0));
+    if (at !== Infinity) {
+      if (at) res.write(held.slice(0, at));
+      return res.end();
+    }
     let k = 0;
     while (k < held.length && !couldStart(held.slice(k))) k++;
     if (k) { res.write(held.slice(0, k)); held = held.slice(k); }
