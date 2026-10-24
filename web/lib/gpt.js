@@ -59,9 +59,24 @@ function erf(x) {
   return s * y;
 }
 
-// out[o] = b[o] + sum_i W[o*in + i] * x[i]
+// out[o] = b[o] + sum_i W[o*in + i] * x[i]. Four output rows per pass share each x[i] load; every row still sums in
+// the same order, so the result is bit-identical to the one-row loop.
 function linear(x, W, b, outDim, inDim, out) {
-  for (let o = 0; o < outDim; o++) {
+  let o = 0;
+  for (; o + 7 < outDim; o += 8) {
+    let s0 = b ? b[o] : 0, s1 = b ? b[o + 1] : 0, s2 = b ? b[o + 2] : 0, s3 = b ? b[o + 3] : 0;
+    let s4 = b ? b[o + 4] : 0, s5 = b ? b[o + 5] : 0, s6 = b ? b[o + 6] : 0, s7 = b ? b[o + 7] : 0;
+    const r0 = o * inDim, r1 = r0 + inDim, r2 = r1 + inDim, r3 = r2 + inDim;
+    const r4 = r3 + inDim, r5 = r4 + inDim, r6 = r5 + inDim, r7 = r6 + inDim;
+    for (let i = 0; i < inDim; i++) {
+      const xi = x[i];
+      s0 += W[r0 + i] * xi; s1 += W[r1 + i] * xi; s2 += W[r2 + i] * xi; s3 += W[r3 + i] * xi;
+      s4 += W[r4 + i] * xi; s5 += W[r5 + i] * xi; s6 += W[r6 + i] * xi; s7 += W[r7 + i] * xi;
+    }
+    out[o] = s0; out[o + 1] = s1; out[o + 2] = s2; out[o + 3] = s3;
+    out[o + 4] = s4; out[o + 5] = s5; out[o + 6] = s6; out[o + 7] = s7;
+  }
+  for (; o < outDim; o++) {
     let s = b ? b[o] : 0;
     const row = o * inDim;
     for (let i = 0; i < inDim; i++) s += W[row + i] * x[i];
@@ -93,6 +108,7 @@ export class Session {
     this.x = new Float32Array(E); this.h = new Float32Array(E); this.qkv = new Float32Array(3 * E);
     this.att = new Float32Array(E); this.proj = new Float32Array(E); this.mlp = new Float32Array(4 * E);
     this.scores = new Float32Array(block);
+    this.acc = new Float64Array(E / model.nHead);
   }
 
   // Feed one token at position this.len; returns logits over the vocab.
@@ -119,11 +135,14 @@ export class Session {
         }
         let sum = 0;
         for (let t = 0; t <= pos; t++) { sc[t] = Math.exp(sc[t] - max); sum += sc[t]; }
-        for (let i = 0; i < hd; i++) {
-          let a = 0;
-          for (let t = 0; t <= pos; t++) a += sc[t] * V[t * E + o + i];
-          this.att[o + i] = a / sum;
+        // Weighted sum of V rows, walking memory in order; per-element sums keep the same order (t ascending).
+        const acc = this.acc;
+        acc.fill(0);
+        for (let t = 0; t <= pos; t++) {
+          const p = sc[t], base = t * E + o;
+          for (let i = 0; i < hd; i++) acc[i] += p * V[base + i];
         }
+        for (let i = 0; i < hd; i++) this.att[o + i] = acc[i] / sum;
       }
       linear(this.att, w[p + "proj.weight"], w[p + "proj.bias"], E, E, this.proj);
       for (let i = 0; i < E; i++) x[i] += this.proj[i];

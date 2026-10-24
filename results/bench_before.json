@@ -1,0 +1,26 @@
+{
+  "node": "v22.18.0",
+  "cpu": "11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz",
+  "cpu_count": 8,
+  "platform": "win32-x64",
+  "model": {
+    "layers": 6,
+    "width": 384,
+    "heads": 6,
+    "block": 512,
+    "vocab": 95
+  },
+  "params": 10880640,
+  "runs": {
+    "prompts": 3,
+    "warmup_per_prompt": 1,
+    "timed_per_prompt": 3,
+    "maxChars": 200,
+    "seed": 1,
+    "temperature": 0.8,
+    "topK": 40
+  },
+  "chars_per_sec": 48.72,
+  "ttfc_ms": 750.49,
+  "load_ms": 15.02
+}

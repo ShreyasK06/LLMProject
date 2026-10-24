@@ -1,0 +1,56 @@
+{
+  "maxChars": 120,
+  "temperature": 0.8,
+  "topK": 1,
+  "seed": 1,
+  "cases": [
+    {
+      "prompt": "User:\nWhat is the capital of France?\n\nAssistant:\n",
+      "output": "The capital of France is the capital of France and France is the capital of France and France is the capital of France a",
+      "first_logits": [
+        -1.24431574344635,
+        -2.671377420425415,
+        -5.427322864532471,
+        3.7795050144195557,
+        -2.8616883754730225,
+        -0.49379846453666687,
+        -5.913071155548096,
+        -4.591058731079102
+      ],
+      "argmax": 53,
+      "argmax_logit": 9.322736740112305
+    },
+    {
+      "prompt": "User:\nGive me some ideas for a birthday party.\n\nAssistant:\n",
+      "output": "There are many ideas for a birthday party of party party party party party party party party party party party party par",
+      "first_logits": [
+        -2.544612407684326,
+        -1.9049534797668457,
+        -3.6176931858062744,
+        1.2783818244934082,
+        -3.013418436050415,
+        -1.7869892120361328,
+        -3.893777847290039,
+        -3.589837074279785
+      ],
+      "argmax": 53,
+      "argmax_logit": 5.425215721130371
+    },
+    {
+      "prompt": "User:\nExplain what a computer is.\n\nAssistant:\n",
+      "output": "A computer is a computer system that is a computer system that is a computer system that is a computer system that is a ",
+      "first_logits": [
+        -2.6526739597320557,
+        -2.436793088912964,
+        -4.7600626945495605,
+        1.8351078033447266,
+        -3.3797402381896973,
+        -1.2720372676849365,
+        -4.608978748321533,
+        -4.798090934753418
+      ],
+      "argmax": 34,
+      "argmax_logit": 5.791595458984375
+    }
+  ]
+}
