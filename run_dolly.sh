@@ -3,7 +3,7 @@
 # Block 512 so the model can see a whole question and answer; batch 32 keeps memory modest.
 set -euo pipefail
 cd "$(dirname "$0")"
-mkdir -p logs
+mkdir -p logs results
 PY=${PYTHON:-$(command -v python3 || command -v python)}
 
 [ -f data/dolly_chat.txt ] || "$PY" prepare_dolly.py
@@ -13,7 +13,7 @@ run() { # name, extra flags...
   echo "=== $name ==="
   "$PY" -u train.py --data data/dolly_chat.txt --out "$name" --block 512 --batch 32 --patience 4 --max_steps 5000 "$@" \
     2>&1 | tee "logs/$name.txt"
-  "$PY" generate.py --chat --ckpt "${name}_best.pt" > "generate_${name}.txt"
+  "$PY" generate.py --chat --ckpt "${name}_best.pt" > "results/generate_${name}.txt"
 }
 
 run dolly_small --n_layer 4 --n_head 4 --n_embd 256 --dropout 0.3

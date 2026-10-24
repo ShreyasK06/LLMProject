@@ -39,26 +39,26 @@ Optional overrides: `STEPS=5000`, `SEEDS="1337 1 2"`, `DATA=data/dolly_chat.txt`
 Run the same steps by hand from the repo root (use `python3` if that is your interpreter name). Replace `SEED` with each of 1337, 1 and 2 in turn:
 
 ```bash
-mkdir -p logs
+mkdir -p logs results
 python prepare_dolly.py                     # only if data/dolly_chat.txt does not exist
 python train_tokenizer.py --data data/dolly_chat.txt --vocab_size 2000 --out tokenizer.json
 python -u train.py --data data/dolly_chat.txt --out bpe_small_sSEED --block 256 --batch 64 --patience 4 --max_steps 5000 --seed SEED --tokenizer tokenizer.json --n_layer 4 --n_head 4 --n_embd 192 --dropout 0.3
-python generate.py --chat --ckpt bpe_small_sSEED_best.pt > generate_bpe_small_sSEED.txt
+python generate.py --chat --ckpt bpe_small_sSEED_best.pt > results/generate_bpe_small_sSEED.txt
 python -u train.py --data data/dolly_chat.txt --out bpe_tiny_sSEED --block 256 --batch 64 --patience 4 --max_steps 5000 --seed SEED --tokenizer tokenizer.json --n_layer 3 --n_head 3 --n_embd 192 --dropout 0.4
-python generate.py --chat --ckpt bpe_tiny_sSEED_best.pt > generate_bpe_tiny_sSEED.txt
+python generate.py --chat --ckpt bpe_tiny_sSEED_best.pt > results/generate_bpe_tiny_sSEED.txt
 ```
 
 To keep logs as the script does, add `2>&1 | tee logs/<name>.txt` to each `train.py` command (for example `logs/bpe_small_s1337.txt`).
 
 ## 3. Outputs
 
-In the repo root, for each of the 6 runs (`bpe_small_s1337`, `bpe_small_s1`, `bpe_small_s2`, `bpe_tiny_s1337`, `bpe_tiny_s1`, `bpe_tiny_s2`):
+For each of the 6 runs (`bpe_small_s1337`, `bpe_small_s1`, `bpe_small_s2`, `bpe_tiny_s1337`, `bpe_tiny_s1`, `bpe_tiny_s2`):
 
-- `<name>_results.json`: split sizes, loss, perplexity, `bits_per_char` (train/val/test), `unknown_chars` (characters the tokenizer dropped, per split), config.
-- `<name>_best.pt` and `<name>_final.pt`: checkpoints (best validation loss, and last step).
+- `results/<name>_results.json`: split sizes, loss, perplexity, `bits_per_char` (train/val/test), `unknown_chars` (characters the tokenizer dropped, per split), config.
+- `<name>_best.pt` and `<name>_final.pt` (repo root): checkpoints (best validation loss, and last step).
 - `logs/<name>.txt`: the training log; `logs/bpe_tokenizer.txt`: the tokenizer log.
-- `generate_<name>.txt`: sample chat replies from the best checkpoint.
-- `tokenizer.json`: the shared tokenizer.
+- `results/generate_<name>.txt`: sample chat replies from the best checkpoint.
+- `tokenizer.json` (repo root): the shared tokenizer.
 
 ## 4. How long
 
@@ -68,18 +68,17 @@ I have no timing for these exact runs. For scale, the existing logs in `logs/` s
 
 Copy these back into the repo on your main machine (same names, same folders):
 
-- all `*_results.json` (all six `bpe_*` ones)
+- the whole `results/` folder (all six `bpe_*_results.json` and `generate_bpe_*.txt`)
 - the whole `logs/` folder
-- all `generate_*.txt`
 - `tokenizer.json`
 - the single chosen `*_best.pt`
 
-Choosing the checkpoint: open each `bpe_*_results.json` and read `bits_per_char`, then `val`. Pick the run with the lowest validation `bits_per_char` (lower is better, and it is comparable across tokenizers). Copy only that run's `<name>_best.pt`, for example `bpe_small_s1337_best.pt`. Do not pick by `test`: test is for the final report, not for selection.
+Choosing the checkpoint: open each `results/bpe_*_results.json` and read `bits_per_char`, then `val`. Pick the run with the lowest validation `bits_per_char` (lower is better, and it is comparable across tokenizers). Copy only that run's `<name>_best.pt`, for example `bpe_small_s1337_best.pt`. Do not pick by `test`: test is for the final report, not for selection.
 
 Keep the whole `bpe_*` set of results and logs (all configs and seeds), not just the winner, so the seeds can be compared (mean and spread across seeds, not one lucky run). The other `.pt` files are large and can stay on the GPU machine; they are git-ignored.
 
 Quick table of validation bits per character:
 
 ```bash
-python -c "import json,glob; [print(f, json.load(open(f))['bits_per_char']['val']) for f in sorted(glob.glob('bpe_*_results.json'))]"
+python -c "import json,glob; [print(f, json.load(open(f))['bits_per_char']['val']) for f in sorted(glob.glob('results/bpe_*_results.json'))]"
 ```

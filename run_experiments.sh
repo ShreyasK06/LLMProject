@@ -2,7 +2,7 @@
 # Run 3 GPU configs sequentially; each early-stops on val loss (patience counted in eval intervals of 250 steps).
 set -euo pipefail
 cd "$(dirname "$0")"
-mkdir -p logs
+mkdir -p logs results
 PY=${PYTHON:-$(command -v python3 || command -v python)}
 
 run() { # name, extra flags...

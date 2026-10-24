@@ -51,9 +51,17 @@ def tok_file(tmp_path, data_file):
 
 def run(tmp_path, data_file, name, extra=()):
     out = tmp_path / name
-    train.main(["--data", str(data_file), "--out", str(out), *TINY, *extra])
-    with open(f"{out}_results.json") as f:
+    train.main(["--data", str(data_file), "--out", str(out), "--results_dir", str(tmp_path / "results"),
+                *TINY, *extra])
+    with open(tmp_path / "results" / f"{name}_results.json") as f:
         return json.load(f)
+
+
+def test_results_go_to_results_dir(tmp_path, data_file):
+    run(tmp_path, data_file, "where")
+    assert (tmp_path / "where_best.pt").exists() and (tmp_path / "where_final.pt").exists()
+    assert not (tmp_path / "where_results.json").exists()
+    assert (tmp_path / "results" / "where_results.json").exists()
 
 
 def test_char_bpc_equals_loss_over_ln2(tmp_path, data_file):

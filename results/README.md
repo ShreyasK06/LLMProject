@@ -1,4 +1,16 @@
-# Inference benchmark results
+# Results
+
+Files that back the numbers in the [main README](../README.md). Training logs are in [`../logs/`](../logs/).
+
+## Training runs
+
+- `<name>_results.json`: written by `train.py` (`--results_dir`, default `results/`) for each run: config, parameter count, best and last step, and train/val/test loss in nats per token (train: 200 random batches; val and test: full sweeps), perplexity. Runs from after the BPE work also record `bits_per_char`, token and character counts per split, and `unknown_chars`.
+  - `exp_a_baseline`, `exp_b_reg`, `exp_c_small`: Shakespeare (`run_experiments.sh`).
+  - `dolly_small`, `dolly_large`: Dolly 15k chat, character level (`run_dolly.sh`); `dolly_large` is the deployed model.
+  - `bpe_*` (Phase 2, not yet run): BPE chat models (`run_bpe.sh`, see [the GPU runbook](../docs/GPU_RUNBOOK.md)).
+- `generate_*.txt`: sample generations from `generate.py` (the current version samples with temperature 0.8, top-k 40, seed 0). `generate_output.txt` is the overfit first Shakespeare run, `generate_output_final.txt` is `exp_c_small`, and `generate_dolly_*.txt` are the chat models.
+
+## Inference benchmark
 
 - `bench_before.json`: the original shipped JavaScript inference code (commit `eca0611`, `web/lib/gpt.js`) on the deployed 10.9M-parameter character model in `web/model`.
 - `bench_after.json`: the current, optimized `web/lib/gpt.js` on the same model, run back to back with the baseline on the same machine.

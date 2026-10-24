@@ -10,6 +10,7 @@ different tokenizers can be compared."""
 import argparse
 import json
 import math
+import os
 import time
 
 import torch
@@ -189,12 +190,15 @@ def parse_args(argv=None):
     ap.add_argument("--patience", type=int, default=d["patience"],
                     help="stop after this many eval intervals without val improvement (0 = off)")
     ap.add_argument("--out", default="model", help="checkpoint prefix: <out>_best.pt, <out>_final.pt")
+    ap.add_argument("--results_dir", default="results",
+                    help="directory for the results JSON: <results_dir>/<basename of out>_results.json")
     return ap.parse_args(argv)
 
 
 def main(argv=None):
     args = parse_args(argv)
-    cfg = {**default_config(), **{k: v for k, v in vars(args).items() if k not in ("out", "data", "tokenizer")}}
+    not_cfg = ("out", "data", "tokenizer", "results_dir")
+    cfg = {**default_config(), **{k: v for k, v in vars(args).items() if k not in not_cfg}}
     assert cfg["n_embd"] % cfg["n_head"] == 0, "n_embd must be divisible by n_head"
     torch.manual_seed(cfg["seed"])
     out = args.out
@@ -254,7 +258,9 @@ def main(argv=None):
     print(f"best checkpoint (step {best_step}) | train {r['train']:.4f} | val {r['val']:.4f} | test {r['test']:.4f}"
           f" | ppl train {ppl['train']:.2f} val {ppl['val']:.2f} test {ppl['test']:.2f}"
           f" | bpc train {bpc['train']:.4f} val {bpc['val']:.4f} test {bpc['test']:.4f}")
-    with open(f"{out}_results.json", "w") as f:
+    os.makedirs(args.results_dir, exist_ok=True)
+    results_path = os.path.join(args.results_dir, f"{os.path.basename(out)}_results.json")
+    with open(results_path, "w") as f:
         json.dump({"data": args.data, "vocab_size": vocab_size, "config": cfg, "params": n_params,
                    "best_step": best_step, "last_step": step,
                    "train_loss": r["train"], "val_loss": r["val"], "test_loss": r["test"],
@@ -262,7 +268,7 @@ def main(argv=None):
                    "tokenizer": args.tokenizer or "char", "bits_per_char": bpc,
                    "tokens": {k: len(v) for k, v in splits.items()}, "chars": dict(split_chars),
                    "unknown_chars": dict(split_unknown)}, f, indent=2)
-    print(f"wrote {out}_results.json")
+    print(f"wrote {results_path}")
 
 
 if __name__ == "__main__":

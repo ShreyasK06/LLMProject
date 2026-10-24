@@ -1,0 +1,24 @@
+# Initial Shakespeare run (before the 80/10/10 split and early stopping): 90/10 train/val split, fixed 5000 steps,
+# final-step model saved. Copied from the original README; the run predates logs/ and has no results JSON.
+device=cuda  vocab=65  params=10.77M
+step     0 | train 4.2446 | val 4.2393 |   5s
+step   250 | train 1.8906 | val 2.0139 |  52s
+step   500 | train 1.4936 | val 1.6917 |  98s
+step   750 | train 1.3415 | val 1.5810 | 146s
+step  1000 | train 1.2551 | val 1.5280 | 194s
+step  1250 | train 1.1831 | val 1.4849 | 242s
+step  1500 | train 1.1305 | val 1.4874 | 290s
+step  1750 | train 1.0822 | val 1.4657 | 338s
+step  2000 | train 1.0256 | val 1.4737 | 387s
+step  2250 | train 0.9836 | val 1.4847 | 435s
+step  2500 | train 0.9278 | val 1.5131 | 483s
+step  2750 | train 0.8729 | val 1.5317 | 532s
+step  3000 | train 0.8264 | val 1.5541 | 580s
+step  3250 | train 0.7778 | val 1.5845 | 628s
+step  3500 | train 0.7399 | val 1.6087 | 675s
+step  3750 | train 0.6997 | val 1.6386 | 723s
+step  4000 | train 0.6607 | val 1.6506 | 771s
+step  4250 | train 0.6313 | val 1.6882 | 819s
+step  4500 | train 0.6085 | val 1.6980 | 866s
+step  4750 | train 0.5914 | val 1.7211 | 914s
+step  5000 | train 0.5719 | val 1.7489 | 962s
