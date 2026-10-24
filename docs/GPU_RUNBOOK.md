@@ -5,7 +5,7 @@ This trains two small BPE chat models (`bpe_small`, `bpe_tiny`) with three seeds
 ## 1. Set up
 
 ```bash
-git clone <your repo URL> LLMProject
+git clone https://github.com/ShreyasK06/LLMProject.git LLMProject
 cd LLMProject
 git checkout bpe-polish        # or main, once bpe-polish has been merged
 python -m venv .venv
@@ -25,7 +25,7 @@ python -c "import torch; print(torch.cuda.is_available())"   # must print True
 bash run_bpe.sh
 ```
 
-On Windows, Git Bash works. `run_bpe.sh` does these steps in order:
+On Windows, Git Bash works. If a script fails with `$'': command not found`, its line endings were converted to CRLF; fix with `sed -i 's/$//' run_bpe.sh`. `run_bpe.sh` does these steps in order:
 
 1. If `data/dolly_chat.txt` is missing, runs `prepare_dolly.py` (downloads Dolly 15k).
 2. Trains the tokenizer (`train_tokenizer.py`, vocab 2000, first 80% of the text) and writes `tokenizer.json`.
@@ -62,7 +62,7 @@ In the repo root, for each of the 6 runs (`bpe_small_s1337`, `bpe_small_s1`, `bp
 
 ## 4. How long
 
-I have no timing for these exact runs. For scale: the original 10.9M-parameter character model took about 8 to 16 minutes per run on the same kind of GPU, per the existing logs in `logs/` (for example `logs/dolly_small.txt`). The BPE runs are smaller than that. There are 6 runs, so budget several multiples of one run; the time column in each log shows actual progress.
+I have no timing for these exact runs. For scale, the existing logs in `logs/` show: the 10.88M-parameter model (`logs/dolly_large.txt`) took about 17 minutes (1018 s) for 5000 steps; the 3.3M-parameter model (`logs/dolly_small.txt`) took about 6 minutes (362 s) for 5000 steps, and `logs/exp_c_small.txt` (3.24M) about 5.5 minutes (325 s). The earlier 10.77M-parameter runs early-stopped at 2500 steps (454 s) and 3000 steps (552 s). The logs record only `device=cuda`, not the GPU model, so I cannot say how your GPU compares. The BPE runs are expected (not measured) to fall in the smaller-model range, roughly 5.5 to 6 minutes per 5000-step run, because they have fewer parameters. There are 6 runs; the time column in each log shows actual progress.
 
 ## 5. What to copy back
 
