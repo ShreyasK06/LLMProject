@@ -1,0 +1,26 @@
+device=cuda data=data/dolly_chat.txt tokenizer=tokenizer.json chars=2879010 tokens=965748 vocab=2000 params=2.21M out=bpe_small_s1337
+config: {"block": 256, "batch": 64, "n_layer": 4, "n_head": 4, "n_embd": 192, "dropout": 0.3, "max_steps": 5000, "lr": 0.001, "min_lr": 0.0001, "weight_decay": 0.1, "patience": 4, "eval_every": 250, "eval_iters": 40, "warmup": 100, "seed": 1337}
+step     0 | train 7.6359 | val 7.6350 | 1s *
+step   250 | train 4.4844 | val 4.5450 | 13s *
+step   500 | train 3.9720 | val 4.1285 | 26s *
+step   750 | train 3.7011 | val 3.9386 | 38s *
+step  1000 | train 3.4733 | val 3.8039 | 50s *
+step  1250 | train 3.3185 | val 3.7198 | 63s *
+step  1500 | train 3.1824 | val 3.6413 | 76s *
+step  1750 | train 3.0783 | val 3.5982 | 88s *
+step  2000 | train 3.0017 | val 3.5575 | 101s *
+step  2250 | train 2.9207 | val 3.5254 | 114s *
+step  2500 | train 2.8455 | val 3.4971 | 127s *
+step  2750 | train 2.7866 | val 3.4760 | 140s *
+step  3000 | train 2.7453 | val 3.4598 | 153s *
+step  3250 | train 2.6857 | val 3.4439 | 166s *
+step  3500 | train 2.6564 | val 3.4342 | 179s *
+step  3750 | train 2.6335 | val 3.4164 | 192s *
+step  4000 | train 2.6021 | val 3.4095 | 204s *
+step  4250 | train 2.5943 | val 3.4037 | 217s *
+step  4500 | train 2.5563 | val 3.3941 | 230s *
+step  4750 | train 2.5441 | val 3.3917 | 243s *
+step  5000 | train 2.5365 | val 3.3904 | 256s *
+saved bpe_small_s1337_final.pt (last step 5000)
+best checkpoint (step 5000) | train 2.5406 | val 3.3904 | test 3.3889 | ppl train 12.69 val 29.68 test 29.63 | bpc train 1.2292 val 1.6508 test 1.6401
+wrote results\bpe_small_s1337_results.json

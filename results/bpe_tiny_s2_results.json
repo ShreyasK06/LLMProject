@@ -1,0 +1,54 @@
+{
+  "data": "data/dolly_chat.txt",
+  "vocab_size": 2000,
+  "config": {
+    "block": 256,
+    "batch": 64,
+    "n_layer": 3,
+    "n_head": 3,
+    "n_embd": 192,
+    "dropout": 0.4,
+    "max_steps": 5000,
+    "lr": 0.001,
+    "min_lr": 0.0001,
+    "weight_decay": 0.1,
+    "patience": 4,
+    "eval_every": 250,
+    "eval_iters": 40,
+    "warmup": 100,
+    "seed": 2
+  },
+  "params": 1768128,
+  "best_step": 5000,
+  "last_step": 5000,
+  "train_loss": 2.924214975833893,
+  "val_loss": 3.519295644634317,
+  "test_loss": 3.5228796840030254,
+  "perplexity": {
+    "train": 18.61960347242242,
+    "val": 33.760640598923125,
+    "test": 33.88185715664437
+  },
+  "eval_iters": 200,
+  "tokenizer": "tokenizer.json",
+  "bits_per_char": {
+    "train": 1.4138368069343088,
+    "val": 1.713575881232271,
+    "test": 1.704934761402006
+  },
+  "tokens": {
+    "train": 771970,
+    "val": 97194,
+    "test": 96584
+  },
+  "chars": {
+    "train": 2303208,
+    "val": 287901,
+    "test": 287901
+  },
+  "unknown_chars": {
+    "train": 0,
+    "val": 0,
+    "test": 0
+  }
+}
