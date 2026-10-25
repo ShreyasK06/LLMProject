@@ -4,7 +4,7 @@ This trains two small BPE chat models (`bpe_small`, `bpe_tiny`) with three seeds
 
 ## 1. Set up
 
-These steps clone from GitHub, so they assume the `bpe-polish` branch has been pushed (or already merged into the default branch). Until then, copy the repo folder to the GPU machine instead (a zip or `scp`, no git needed; `.pt` files and `data/dolly_chat.txt` can be left out) and start at `python -m venv .venv`.
+These steps clone from GitHub (the code is on `main`). Without git access, copy the repo folder to the GPU machine instead (a zip or `scp`; `.pt` files and `data/dolly_chat.txt` can be left out) and start at `python -m venv .venv`.
 
 ```bash
 git clone https://github.com/ShreyasK06/LLMProject.git LLMProject

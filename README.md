@@ -46,11 +46,22 @@ token ids -> token embedding (vocab x d) + learned position embedding (block x d
 |---|---|---|---|---|
 | `dolly_small`, characters | 3.31M | 1.619 | 1.716 | 1.709 |
 | `dolly_large`, characters (deployed) | 10.88M | 1.288 | 1.536 | 1.530 |
-| BPE (`run_bpe.sh`, 2 configs × 3 seeds) | TODO(phase2) | TODO(phase2) | TODO(phase2) | TODO(phase2) |
+| `bpe_tiny`, BPE (3 seeds, mean) | 1.77M | 1.414 | 1.715 | 1.704 |
+| `bpe_small`, BPE (3 seeds, mean) | 2.21M | 1.226 | 1.651 | 1.642 |
+| `bpe_large`, BPE (2 seeds, mean) | 11.51M | 1.114 | 1.708 | 1.699 |
 
-For the character models, Train is an estimate over 200 random training batches; Val and Test are full sweeps.
+For the character models, Train is an estimate over 200 random training batches; Val and Test are full sweeps. The BPE rows come from `results/bpe_*_results.json`, trained on a GPU with a 2,000-token vocabulary (0.335 tokens per character, so a reply takes about a third as many forward passes).
 
-The BPE models have not been trained yet; they need a GPU ([docs/GPU_RUNBOOK.md](docs/GPU_RUNBOOK.md)). The selection rule is fixed in advance: lowest validation bits per character, with test reported once.
+**Spread across seeds.** Validation bpc ranges 1.649 to 1.655 for `bpe_small` (3 seeds), 1.714 to 1.716 for `bpe_tiny` (3 seeds) and 1.699 to 1.718 for `bpe_large` (2 seeds). Seed noise is under 0.02, much smaller than the differences below. The character models have a single seed.
+
+**What the comparison shows (validation bpc, lower is better):**
+
+- **At small size BPE wins.** `bpe_small` (2.21M parameters, val 1.651) beats `dolly_small` (3.31M, val 1.716) with a third fewer parameters, and it needs a third as many forward passes per reply.
+- **At 10 to 11M parameters it loses.** `bpe_large` (val 1.699 and 1.718) is clearly worse than the character model of the same size, `dolly_large` (val 1.536). It overfits fast: validation bottomed out at step 1250 to 1500 and then rose while training bpc kept falling (train 1.06 to 1.17, validation 1.70 to 1.72; early stopping at steps 2250 and 2500).
+- **Likely reason (not tested).** 2,000-token BPE turns the 2.9M training characters into about 1M tokens, little for an 11M-parameter model, while the character model sees 2.9M positions.
+- **`bpe_small` and `bpe_tiny` hit the 5000-step cap while still improving,** so their numbers are not converged; `bpe_large` trained to early stopping.
+
+The selection rule was fixed in advance: lowest validation bits per character, with test reported once. No BPE model beat `dolly_large` (best BPE validation 1.649 against 1.536), so `dolly_large` stays deployed.
 
 ## Data
 
@@ -87,6 +98,8 @@ All numbers come from `results/*_results.json` and are measured on the best-vali
 
 **What the models learned.** The Shakespeare model learned play formatting, period vocabulary and plausible speakers, but no meaning across lines ([results/generate_output_final.txt](results/generate_output_final.txt); overfit first run: [results/generate_output.txt](results/generate_output.txt)). The chat model learned the shape of an answer but not facts. Asked `What is the capital of France?`, `dolly_large` writes "There are many capital of France - in the United States of America is Ronaldo and a United States of America - Italy in Asia - …" ([results/generate_dolly_large.txt](results/generate_dolly_large.txt), temperature 0.8, top-k 40, seed 0).
 
+**BPE sample replies** (`bpe_small` seed 1, [results/generate_bpe_small_s1.txt](results/generate_bpe_small_s1.txt); same temperature, top-k and seed as above): asked `What is the capital of France?` it writes "The capital of France is the capital of Australia and the south of Ethiopia." It follows the sentence shape better than the character model but is just as wrong, since the models learn style and not facts. `Hello, how are you?` still produces rambling text.
+
 ## Speed
 
 `web/bench/bench.mjs` times the JavaScript inference on the deployed 10.88M-parameter character model: 3 chat prompts, 200 characters each, medians over 9 timed runs (protocol in [results/README.md](results/README.md)).
@@ -113,7 +126,7 @@ python -m pytest tests -v          # tokenizer, JS/Python parity, training smoke
 
 `train.py --out NAME` writes `NAME_best.pt` and `NAME_final.pt` (git-ignored) and `results/NAME_results.json` (`--results_dir` changes the folder); `--tokenizer tokenizer.json` trains on BPE tokens.
 
-**BPE runs on a GPU machine:** `bash run_bpe.sh`; see [docs/GPU_RUNBOOK.md](docs/GPU_RUNBOOK.md) for setup, outputs and what to copy back.
+**BPE runs on a GPU machine:** `bash run_bpe.sh` (small and tiny, 3 seeds) and `bash run_bpe_large.sh` (the `dolly_large` size, 2 seeds); see [docs/GPU_RUNBOOK.md](docs/GPU_RUNBOOK.md) for setup, outputs and what to copy back.
 
 **Web app:**
 
@@ -132,7 +145,7 @@ npm run dev:ui                                         # UI and API together on 
 | `train.py`, `generate.py` | model, training, evaluation; sampling from a checkpoint |
 | `bpe.py`, `train_tokenizer.py` | from-scratch BPE tokenizer and its training script |
 | `prepare_dolly.py` | builds `data/dolly_chat.txt` from Dolly 15k |
-| `run_experiments.sh`, `run_dolly.sh`, `run_bpe.sh` | Shakespeare experiments, Dolly chat models, BPE chat models (GPU) |
+| `run_experiments.sh`, `run_dolly.sh`, `run_bpe.sh`, `run_bpe_large.sh` | Shakespeare experiments, Dolly chat models, BPE chat models (GPU) |
 | `export_weights.py` | checkpoint to `weights.bin` + `model.json` (+ `tokenizer.json`) for JavaScript |
 | `results/`, `logs/` | results JSON, sample generations and benchmarks; training logs |
 | `tests/` | Python tests |
@@ -142,10 +155,10 @@ npm run dev:ui                                         # UI and API together on 
 ## Limitations and what would come next
 
 - **The models produce fluent-sounding text without facts or meaning.** At 3 to 11 million parameters and under 3 million characters of data, they capture surface statistics: formatting, vocabulary, the shape of a reply. Correct answers would take far more data and parameters, outside this project's scope (no pretrained weights, no extra data).
-- **BPE results are pending** (Phase 2). The table will be filled from `results/bpe_*_results.json` with the mean and spread over three seeds, and the BPE model deployed only if it is better on validation bits per character.
-- **One seed per character model, no cross-validation,** so small differences between them are not evidence.
+- **BPE did not beat the deployed model.** At about 11M parameters, BPE (`bpe_large`, val 1.70) is worse than characters (`dolly_large`, val 1.54), probably because 2.9M characters become only about 1M tokens. BPE does win at about 2M parameters (`bpe_small` val 1.65 against `dolly_small` val 1.72 at 3.3M). The BPE models were not deployed; they are kept as results.
+- **One seed per character model, no cross-validation,** so small differences between them are not evidence. The BPE models have 2 to 3 seeds.
 - **No instruction tuning;** the chat model imitates the transcript format it was trained on.
-- Next: finish the BPE runs, run more seeds for the character baselines, and try a reserved end-of-reply token instead of the blank-line stop.
+- Next: more data (BPE's advantage should grow with it), more seeds for the character baselines, and a reserved end-of-reply token instead of the blank-line stop.
 
 ## License
 
