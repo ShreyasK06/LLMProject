@@ -1,0 +1,16 @@
+device=cuda data=data/dolly_chat.txt tokenizer=tokenizer.json chars=2879010 tokens=965748 vocab=2000 params=11.51M out=bpe_large_s1337
+config: {"block": 256, "batch": 64, "n_layer": 6, "n_head": 6, "n_embd": 384, "dropout": 0.3, "max_steps": 10000, "lr": 0.001, "min_lr": 0.0001, "weight_decay": 0.2, "patience": 4, "eval_every": 250, "eval_iters": 40, "warmup": 100, "seed": 1337}
+step     0 | train 7.6688 | val 7.6678 | 3s *
+step   250 | train 4.1422 | val 4.2634 | 49s *
+step   500 | train 3.5137 | val 3.8410 | 96s *
+step   750 | train 3.0426 | val 3.6386 | 144s *
+step  1000 | train 2.6935 | val 3.5580 | 192s *
+step  1250 | train 2.4150 | val 3.5283 | 240s *
+step  1500 | train 2.1994 | val 3.5313 | 289s
+step  1750 | train 2.0128 | val 3.5566 | 337s
+step  2000 | train 1.8610 | val 3.5854 | 385s
+step  2250 | train 1.7151 | val 3.6134 | 434s
+early stop at step 2250: no val improvement for 4 evals (best step 1250)
+saved bpe_large_s1337_final.pt (last step 2250)
+best checkpoint (step 1250) | train 2.4226 | val 3.5283 | test 3.5314 | ppl train 11.28 val 34.07 test 34.17 | bpc train 1.1710 val 1.7180 test 1.7091
+wrote results\bpe_large_s1337_results.json
